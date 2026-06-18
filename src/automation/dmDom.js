@@ -1,15 +1,20 @@
 /**
  * TikTok DM DOM helpers — verified via @Browser (2026-06-18).
- * List: dm-new-conversation-list / dm-new-conversation-item / dm-new-conversation-nickname
- * Chat: dm-new-chatbox / dm-new-input-editor / dm-new-emoji-btn / chat-uniqueid
+ * Item: div[data-e2e="dm-new-conversation-item"]#more-action-icon-...
+ * Nick:  p[data-e2e="dm-new-conversation-nickname"]
+ * Preview: p[class*="PInfoExtractTime"]
  */
-const { safeWait } = require('./pageUtils');
+const { safeWait, dismissCookieBanner, dismissUiOverlays, preparePage } = require('./pageUtils');
 
 const SEL = {
   nick: '[data-e2e="dm-new-conversation-nickname"]',
   item: '[data-e2e="dm-new-conversation-item"]',
+  itemInfo: '[class*="DivItemInfo"]',
+  preview: '[class*="PInfoExtractTime"]',
   list: '[data-e2e="dm-new-conversation-list"]',
   listContent: '[class*="DivListContent"]',
+  conversationList: '[class*="ConversationListContainer"]',
+  messageDrawer: '[class*="MessageDrawerContainer"]',
   avatar: '[data-e2e="dm-new-conversation-avatar"]',
   chatbox: '[data-e2e="dm-new-chatbox"]',
   input: '[data-e2e="dm-new-input-editor"]',
@@ -60,6 +65,28 @@ function extractStreakDays(text) {
   return null;
 }
 
+async function ensureMessagesDrawer(page) {
+  const listVisible = await page
+    .locator(`${SEL.list}, ${SEL.listContent}, ${SEL.nick}`)
+    .first()
+    .isVisible()
+    .catch(() => false);
+
+  if (listVisible) return true;
+
+  const nav = page.locator(`${SEL.navMessages}, a[href="/messages"]`).first();
+  if (await nav.count()) {
+    await nav.click().catch(() => {});
+    await safeWait(page, 1200);
+  }
+
+  return page
+    .locator(`${SEL.list}, ${SEL.nick}`)
+    .first()
+    .isVisible()
+    .catch(() => false);
+}
+
 async function ensureMessagesView(page) {
   if (!page.url().includes('/messages')) {
     const nav = page.locator(`${SEL.navMessages}, a[href="/messages"]`).first();
@@ -73,10 +100,18 @@ async function ensureMessagesView(page) {
     await page.goto(MESSAGES_URL, { waitUntil: 'domcontentloaded' });
     await safeWait(page, 2000);
   }
+
+  await ensureMessagesDrawer(page);
+}
+
+async function prepareMessagesPage(page) {
+  await preparePage(page);
+  await ensureMessagesView(page);
+  await dismissUiOverlays(page);
 }
 
 async function scrollChatList(page, steps = 4) {
-  const locator = page.locator(`${SEL.list}, ${SEL.listContent}`).first();
+  const locator = page.locator(`${SEL.listContent}, ${SEL.list}, ${SEL.conversationList}`).first();
   if (!(await locator.count())) return;
 
   for (let i = 0; i < steps; i++) {
@@ -98,6 +133,7 @@ async function waitForNicknames(page, timeout = 20000) {
   while (Date.now() < deadline) {
     const count = await page.locator(SEL.nick).count();
     if (count > 0) return count;
+    await ensureMessagesDrawer(page);
     await scrollChatList(page, 2);
     await safeWait(page, 800);
   }
@@ -109,28 +145,31 @@ function parseChatsInPage() {
   const results = [];
   const seen = new Set();
 
-  document.querySelectorAll('[data-e2e="dm-new-conversation-nickname"]').forEach((nickEl) => {
-    const displayName = (nickEl.textContent || '').replace(/\s+/g, ' ').trim();
+  const items = document.querySelectorAll('[data-e2e="dm-new-conversation-item"]');
+  const elements = items.length
+    ? items
+    : document.querySelectorAll('[id^="more-action-icon"]');
+
+  elements.forEach((item) => {
+    const nickEl = item.querySelector('[data-e2e="dm-new-conversation-nickname"]');
+    const displayName = (nickEl?.textContent || '').replace(/\s+/g, ' ').trim();
     if (!displayName) return;
 
-    const item =
-      nickEl.closest('[data-e2e="dm-new-conversation-item"]') ||
-      nickEl.closest('[id^="more-action-icon"]');
+    const itemId = item.id || '';
+    const previewEl = item.querySelector('[class*="PInfoExtractTime"]');
+    const preview = (previewEl?.textContent || '').replace(/\s+/g, ' ').trim();
+    const streakLine = [preview, item.textContent || '']
+      .join('\n')
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => /🔥|streak|огон|\d+\s*(day|дн)/i.test(line)) || '';
 
-    const itemId = item?.id || '';
-    const text = (item?.textContent || '').replace(/\s+/g, ' ').trim();
-    const streakLine =
-      text
-        .split('\n')
-        .map((line) => line.trim())
-        .find((line) => /🔥|streak|огон|\d+\s*(day|дн)/i.test(line)) || '';
-
-    const href = item?.querySelector('a[href*="/@"]')?.getAttribute('href') || '';
+    const href = item.querySelector('a[href*="/@"]')?.getAttribute('href') || '';
     const hrefUser = href.match(/@([^/?#]+)/)?.[1] || null;
 
     const avatarEl =
-      item?.querySelector('[data-e2e="dm-new-conversation-avatar"] img') ||
-      item?.querySelector('img');
+      item.querySelector('[data-e2e="dm-new-conversation-avatar"] img') ||
+      item.querySelector('img');
 
     const key = (hrefUser || itemId || displayName).toLowerCase();
     if (seen.has(key)) return;
@@ -140,6 +179,7 @@ function parseChatsInPage() {
       displayName,
       tiktokUsername: hrefUser,
       itemId,
+      preview,
       streakText: streakLine,
       avatarUrl: avatarEl?.src || null,
     });
@@ -154,28 +194,60 @@ async function parseChats(page) {
   return raw.map((chat) => ({
     tiktokUsername: resolveTiktokUsername(chat.displayName, chat.tiktokUsername, chat.itemId),
     displayName: chat.displayName,
-    streakDays: extractStreakDays(chat.streakText),
+    preview: chat.preview || null,
+    streakDays: extractStreakDays(chat.streakText || chat.preview),
     avatarUrl: chat.avatarUrl,
     itemId: chat.itemId,
   }));
+}
+
+async function openChatByItemId(page, itemId) {
+  if (!itemId) return false;
+
+  const opened = await page.evaluate((id) => {
+    const item = document.getElementById(id);
+    if (!item) return false;
+    const clickTarget =
+      item.querySelector('[class*="DivItemInfo"]') ||
+      item.querySelector('[data-e2e="dm-new-conversation-nickname"]') ||
+      item;
+    clickTarget.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return true;
+  }, itemId);
+
+  if (!opened) return false;
+
+  await page
+    .locator(`${SEL.input}, ${SEL.uniqueId}, ${SEL.chatNick}`)
+    .first()
+    .waitFor({ state: 'visible', timeout: 12000 })
+    .catch(() => {});
+
+  await safeWait(page, 600);
+  return true;
 }
 
 async function openChatByDisplayName(page, displayName) {
   const target = (displayName || '').trim();
   if (!target) return false;
 
-  const opened = await page.evaluate(
-    ({ nickSel, itemSel, name }) => {
-      const nick = [...document.querySelectorAll(nickSel)].find(
-        (el) => el.textContent.trim() === name
-      );
-      if (!nick) return false;
-      const item = nick.closest(itemSel);
-      (item || nick).click();
-      return true;
-    },
-    { nickSel: SEL.nick, itemSel: '[data-e2e="dm-new-conversation-item"]', name: target }
-  );
+  await dismissUiOverlays(page);
+
+  const opened = await page.evaluate((name) => {
+    const items = document.querySelectorAll('[data-e2e="dm-new-conversation-item"]');
+    for (const item of items) {
+      const nick = item.querySelector('[data-e2e="dm-new-conversation-nickname"]');
+      if (!nick || nick.textContent.trim() !== name) continue;
+
+      const clickTarget =
+        item.querySelector('[class*="DivItemInfo"]') ||
+        item.querySelector('[class*="DivInfoTextWrapper"]') ||
+        nick;
+      clickTarget.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      return item.id || true;
+    }
+    return false;
+  }, target);
 
   if (!opened) return false;
 
@@ -205,10 +277,13 @@ module.exports = {
   resolveTiktokUsername,
   extractStreakDays,
   ensureMessagesView,
+  ensureMessagesDrawer,
+  prepareMessagesPage,
   scrollChatList,
   waitForNicknames,
   parseChatsInPage,
   parseChats,
   openChatByDisplayName,
+  openChatByItemId,
   readNavProfile,
 };

@@ -49,6 +49,7 @@ module.exports = {
     chatList: [DM.list, DM.listContent, '[class*="ConversationListContainer"]'],
     chatItem: [DM.item, '[id^="more-action-icon"]', '[class*="DivItemWrapper"]'],
     chatNickname: [DM.nick, '[class*="PInfoNickname"]'],
+    chatPreview: [DM.preview, '[class*="PInfoExtractTime"]'],
     chatAvatar: [`${DM.avatar} img`, 'img'],
     openChatUsername: [DM.uniqueId, DM.chatNick],
     chatPanel: [DM.chatbox, '[data-e2e="message-input-area"]'],

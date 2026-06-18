@@ -95,13 +95,38 @@ async function dismissCookieBanner(page) {
   return dismissed;
 }
 
+async function dismissUiOverlays(page) {
+  if (!isPageOpen(page)) return false;
+
+  return page
+    .evaluate(() => {
+      let changed = false;
+      const selectors = [
+        '[class*="DivAnimationCover"]',
+        '[class*="AnimationCover"]',
+      ];
+
+      for (const selector of selectors) {
+        document.querySelectorAll(selector).forEach((el) => {
+          el.style.setProperty('pointer-events', 'none', 'important');
+          changed = true;
+        });
+      }
+
+      return changed;
+    })
+    .catch(() => false);
+}
+
 async function preparePage(page) {
   await dismissCookieBanner(page);
+  await dismissUiOverlays(page);
 }
 
 async function safeClick(page, locator, options = {}) {
   const timeout = options.timeout ?? 15000;
   await dismissCookieBanner(page);
+  await dismissUiOverlays(page);
 
   try {
     await locator.click({ timeout });
@@ -114,6 +139,7 @@ async function safeClick(page, locator, options = {}) {
   }
 
   await dismissCookieBanner(page);
+  await dismissUiOverlays(page);
   await locator.click({ timeout, force: true });
 }
 
@@ -152,6 +178,7 @@ module.exports = {
   isPageOpen,
   safeWait,
   dismissCookieBanner,
+  dismissUiOverlays,
   preparePage,
   safeClick,
   formatBrowserError,

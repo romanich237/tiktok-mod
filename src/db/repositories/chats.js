@@ -3,12 +3,13 @@ const { getDb } = require('../connection');
 function upsertChat(accountId, chat) {
   getDb()
     .prepare(
-      `INSERT INTO chats (account_id, tiktok_username, display_name, streak_days, avatar_url, last_parsed_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `INSERT INTO chats (account_id, tiktok_username, display_name, streak_days, avatar_url, tiktok_item_id, last_parsed_at)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(account_id, tiktok_username) DO UPDATE SET
          display_name = excluded.display_name,
          streak_days = excluded.streak_days,
          avatar_url = excluded.avatar_url,
+         tiktok_item_id = excluded.tiktok_item_id,
          last_parsed_at = datetime('now'),
          updated_at = datetime('now')`
     )
@@ -17,19 +18,21 @@ function upsertChat(accountId, chat) {
       chat.tiktokUsername,
       chat.displayName || chat.tiktokUsername,
       chat.streakDays ?? null,
-      chat.avatarUrl || null
+      chat.avatarUrl || null,
+      chat.itemId || null
     );
 }
 
 async function upsertChats(accountId, chats) {
   const db = getDb();
   const stmt = db.prepare(
-    `INSERT INTO chats (account_id, tiktok_username, display_name, streak_days, avatar_url, last_parsed_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'))
+    `INSERT INTO chats (account_id, tiktok_username, display_name, streak_days, avatar_url, tiktok_item_id, last_parsed_at)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(account_id, tiktok_username) DO UPDATE SET
        display_name = excluded.display_name,
        streak_days = excluded.streak_days,
        avatar_url = excluded.avatar_url,
+       tiktok_item_id = excluded.tiktok_item_id,
        last_parsed_at = datetime('now'),
        updated_at = datetime('now')`
   );
@@ -40,7 +43,8 @@ async function upsertChats(accountId, chats) {
         chat.tiktokUsername,
         chat.displayName || chat.tiktokUsername,
         chat.streakDays ?? null,
-        chat.avatarUrl || null
+        chat.avatarUrl || null,
+        chat.itemId || null
       );
     }
   });

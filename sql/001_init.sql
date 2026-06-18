@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS chats (
   streak_days INTEGER NULL,
   enabled INTEGER NOT NULL DEFAULT 0,
   avatar_url TEXT NULL,
+  tiktok_item_id TEXT NULL,
   last_parsed_at TEXT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),

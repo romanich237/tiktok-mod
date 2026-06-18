@@ -1,7 +1,7 @@
 const { config } = require('../config');
 const browserManager = require('./browser');
-const { SEL, openChatByDisplayName } = require('./dmDom');
-const { safeWait, safeClick } = require('./pageUtils');
+const { SEL, openChatByDisplayName, openChatByItemId } = require('./dmDom');
+const { safeWait, safeClick, dismissUiOverlays } = require('./pageUtils');
 const logger = require('../logger');
 
 const EMOJI_SHORTCODES = {
@@ -34,7 +34,13 @@ function normalize(value) {
   return (value || '').replace(/^@/, '').trim().toLowerCase();
 }
 
-async function openChatByUsername(page, username, displayName) {
+async function openChatByUsername(page, username, displayName, itemId = null) {
+  await dismissUiOverlays(page);
+
+  if (itemId && (await openChatByItemId(page, itemId))) {
+    return true;
+  }
+
   const display = (displayName || username || '').trim();
   if (display && (await openChatByDisplayName(page, display))) {
     return true;
@@ -121,8 +127,9 @@ async function sendEmojiToChat(page, chat, emoji = null) {
   const chosenEmoji = emoji || pickRandomEmoji();
   const username = chat.tiktok_username || chat.tiktokUsername;
   const displayName = chat.display_name || chat.displayName;
+  const itemId = chat.tiktok_item_id || chat.itemId;
 
-  const opened = await openChatByUsername(page, username, displayName);
+  const opened = await openChatByUsername(page, username, displayName, itemId);
   if (!opened) {
     throw new Error(`Chat not found: ${displayName || username}`);
   }

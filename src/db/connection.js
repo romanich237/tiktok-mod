@@ -32,6 +32,11 @@ function migrateSchema() {
   if (!columns.includes('display_name')) {
     db.exec('ALTER TABLE accounts ADD COLUMN display_name TEXT NULL');
   }
+
+  const chatColumns = db.prepare('PRAGMA table_info(chats)').all().map((col) => col.name);
+  if (!chatColumns.includes('tiktok_item_id')) {
+    db.exec('ALTER TABLE chats ADD COLUMN tiktok_item_id TEXT NULL');
+  }
 }
 
 function getDb() {
