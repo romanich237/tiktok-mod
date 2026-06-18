@@ -1,13 +1,23 @@
+const { Markup } = require('telegraf');
 const { mainMenuKeyboard } = require('../keyboards/inline');
-const { formatCommandsHelp } = require('../setupCommands');
+const { isAccountAuthorized } = require('../auth');
+
+function authKeyboard() {
+  return Markup.inlineKeyboard([[Markup.button.callback('🔐 Авторизация', 'start_auth')]]);
+}
 
 function registerStart(bot) {
   bot.command('start', async (ctx) => {
-    await ctx.reply(
-      `👋 TikTok Mod Bot\n\nКоманды:\n${formatCommandsHelp()}`,
-      mainMenuKeyboard()
-    );
+    if (!isAccountAuthorized()) {
+      await ctx.reply(
+        '👋 TikTok Mod\n\nДля начала работы войдите в TikTok.',
+        authKeyboard()
+      );
+      return;
+    }
+
+    await ctx.reply('👋 TikTok Mod\n\nВыберите действие:', mainMenuKeyboard());
   });
 }
 
-module.exports = { registerStart };
+module.exports = { registerStart, authKeyboard };

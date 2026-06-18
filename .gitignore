@@ -4,6 +4,8 @@ sessions/*
 !sessions/.gitkeep
 logs/*
 !logs/.gitkeep
+sql
+data
 data/*
 !data/.gitkeep
 .env

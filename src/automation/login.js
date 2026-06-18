@@ -102,25 +102,69 @@ async function openLoginStart(page) {
 }
 
 async function openQrLoginForm(page) {
-  const loginUrl = config.tiktok.loginUrl || 'https://www.tiktok.com/login';
+  const loginUrl = selectors.login.qrLoginUrl;
   logger.info(`Opening QR login: ${loginUrl}`);
   await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('[data-e2e="login-title"]', { timeout: 20000 }).catch(() => {});
-
-  const opened = await clickQrChannel(page);
-  if (!opened) {
-    await page.goto(selectors.login.qrLoginUrl, { waitUntil: 'domcontentloaded' });
-  }
-
   await page.waitForSelector('[data-e2e="qr-code"]', { timeout: 20000 });
+  await waitForQrCanvasReady(page);
   logger.info('QR-код загружен');
   return page;
 }
 
+async function waitForQrCanvasReady(page) {
+  await page.waitForFunction(
+    () => {
+      const canvas = document.querySelector('[data-e2e="qr-code"] canvas');
+      if (!canvas || canvas.width < 50 || canvas.height < 50) return false;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return false;
+
+      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let darkPixels = 0;
+      for (let i = 0; i < data.length; i += 16) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        if (r < 180 && g < 180 && b < 180) darkPixels += 1;
+      }
+      return darkPixels > 30;
+    },
+    null,
+    { timeout: 30000 }
+  );
+}
+
 async function screenshotQrCode(page) {
-  const qr = page.locator('[data-e2e="qr-code"]');
-  await qr.waitFor({ state: 'visible', timeout: 10000 });
-  return qr.screenshot({ type: 'png' });
+  await page.locator('[data-e2e="qr-code"]').first().waitFor({ state: 'visible', timeout: 10000 });
+  await waitForQrCanvasReady(page);
+
+  const dataUrl = await page.evaluate(() => {
+    const container = document.querySelector('[data-e2e="qr-code"]');
+    const canvas = container?.querySelector('canvas');
+    if (!canvas) return null;
+    try {
+      return canvas.toDataURL('image/png');
+    } catch {
+      return null;
+    }
+  });
+
+  if (dataUrl?.startsWith('data:image/png;base64,')) {
+    return Buffer.from(dataUrl.replace(/^data:image\/png;base64,/, ''), 'base64');
+  }
+
+  const canvas = page.locator('[data-e2e="qr-code"] canvas').first();
+  if ((await canvas.count()) > 0) {
+    return canvas.screenshot({ type: 'png' });
+  }
+
+  const img = page.locator('[data-e2e="qr-code"] img').first();
+  if ((await img.count()) > 0) {
+    return img.screenshot({ type: 'png' });
+  }
+
+  throw new Error('QR-код не найден на странице');
 }
 
 async function openEmailLoginForm(page) {

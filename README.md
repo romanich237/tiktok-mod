@@ -56,78 +56,6 @@ chmod +x install.sh
 
 ---
 
-## Установка вручную
-
-### 1. Системные пакеты (Ubuntu/Debian)
-
-```bash
-sudo apt update
-sudo apt install -y nodejs npm xvfb \
-  libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1 libasound2 \
-  build-essential python3
-```
-
-### 2. Проект
-
-```bash
-git clone https://github.com/romanich237/tiktok-mod.git
-cd tiktok-mod
-npm install
-npx playwright install chromium
-sudo npx playwright install-deps chromium
-```
-
-### 3. Конфиг
-
-```bash
-cp config.json.example config.json
-nano config.json
-```
-
-```json
-{
-  "telegram": {
-    "botToken": "ТОКЕН_ОТ_@BotFather",
-    "allowedUserIds": [ВАШ_TELEGRAM_ID]
-  },
-  "database": {
-    "file": "data/tiktok_mod.db"
-  }
-}
-```
-
-### 4. Запуск
-
-```bash
-npm start
-```
-
----
-
-## Фоновый запуск
-
-По умолчанию `./install.sh` сам ставит PM2 и запускает бота.
-
-```bash
-pm2 logs tiktok-mod
-pm2 restart ecosystem.config.js
-pm2 status
-```
-
-### systemd (опционально)
-
-```bash
-sudo cp deploy/tiktok-mod.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable tiktok-mod
-sudo systemctl start tiktok-mod
-sudo journalctl -u tiktok-mod -f
-```
-
-Или при установке: `./install.sh --systemd`
-
----
-
 ## Вход в TikTok (`/login`)
 
 Все данные вводятся в Telegram-боте:
@@ -146,17 +74,6 @@ sudo journalctl -u tiktok-mod -f
 Каждую минуту проверяется новая версия. При обновлении бот пишет:
 
 > Вышла новую версия проекта, перезапускаю сервер
-
-Затем выполняет `git pull`, `npm install`, миграции и перезапуск.
-
-```json
-"updater": {
-  "enabled": true,
-  "checkIntervalMinutes": 1,
-  "repository": "https://github.com/romanich237/tiktok-mod.git",
-  "branch": "main"
-}
-```
 
 Проект должен быть установлен через `git clone` (не ZIP).
 

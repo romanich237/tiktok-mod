@@ -1,6 +1,7 @@
 const { Markup } = require('telegraf');
 const loginAutomation = require('../../automation/login');
 const loginSession = require('../loginSession');
+const { mainMenuKeyboard } = require('../keyboards/inline');
 const logger = require('../../logger');
 
 let loginInProgress = false;
@@ -18,6 +19,11 @@ function registerLogin(bot) {
   bot.command('login', startLogin);
   bot.command('login_cancel', cancelLogin);
   bot.hears('🔐 Войти', startLogin);
+
+  bot.action('start_auth', async (ctx) => {
+    await ctx.answerCbQuery();
+    await beginQrLogin(ctx);
+  });
 
   bot.action('login_method:qr', async (ctx) => {
     await ctx.answerCbQuery();
@@ -86,6 +92,12 @@ function registerLogin(bot) {
   }
 
   async function beginQrLogin(ctx) {
+    if (loginInProgress) {
+      await ctx.reply('⏳ Вход уже выполняется. /login_cancel — отменить');
+      return;
+    }
+
+    loginInProgress = true;
     const userId = ctx.from.id;
     try {
       loginSession.update(userId, { step: 'qr_waiting', method: 'qr' });
@@ -107,7 +119,7 @@ function registerLogin(bot) {
       });
 
       await cleanupLogin(userId);
-      await ctx.reply('✅ Вход по QR выполнен! Сессия сохранена. Используйте /chats');
+      await ctx.reply('✅ Вход по QR выполнен! Сессия сохранена.', mainMenuKeyboard());
     } catch (err) {
       logger.error('QR login failed', err);
       await cleanupLogin(userId);
@@ -147,7 +159,7 @@ function registerLogin(bot) {
       await ctx.reply('⏳ Проверяю код...');
       await loginAutomation.loginPhoneComplete(userId, code);
       await cleanupLogin(userId);
-      await ctx.reply('✅ Вход выполнен! Сессия сохранена. Используйте /chats');
+      await ctx.reply('✅ Вход выполнен! Сессия сохранена.', mainMenuKeyboard());
     } catch (err) {
       await cleanupLogin(userId);
       throw err;
@@ -167,7 +179,7 @@ function registerLogin(bot) {
       await loginAutomation.startEmailLogin(userId);
       await loginAutomation.loginEmailComplete(userId, session.username, password);
       await cleanupLogin(userId);
-      await ctx.reply('✅ Вход выполнен! Сессия сохранена. Используйте /chats');
+      await ctx.reply('✅ Вход выполнен! Сессия сохранена.', mainMenuKeyboard());
     } catch (err) {
       await cleanupLogin(userId);
       throw err;
