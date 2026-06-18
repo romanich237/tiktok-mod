@@ -11,6 +11,9 @@ const ROOT = __dirname;
 const CONFIG_PATH = path.join(ROOT, 'config.json');
 const EXAMPLE_PATH = path.join(ROOT, 'config.json.example');
 const MYSQL_WAIT_SEC = 90;
+const MYSQL_PORT_MIN = 2000;
+const MYSQL_PORT_MAX = 3000;
+const MYSQL_CONF_DROPIN = '/etc/mysql/mysql.conf.d/zz-tiktok-mod.cnf';
 
 const colors = {
   reset: '\x1b[0m',
@@ -69,6 +72,15 @@ function run(cmd, options = {}) {
     shell: '/bin/bash',
     ...options,
   });
+}
+
+function runOptional(cmd, options = {}) {
+  try {
+    run(cmd, options);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function commandExists(name) {
@@ -144,6 +156,28 @@ function waitForPort(port, host = '127.0.0.1', timeoutMs = MYSQL_WAIT_SEC * 1000
   });
 }
 
+function isPortFree(port, host = '127.0.0.1') {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', () => resolve(false));
+    server.once('listening', () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port, host);
+  });
+}
+
+async function findFreePort(min = MYSQL_PORT_MIN, max = MYSQL_PORT_MAX) {
+  for (let port = min; port <= max; port++) {
+    if (await isPortFree(port)) return port;
+  }
+  fail(`Нет свободного порта MySQL в диапазоне ${min}-${max}`);
+}
+
+function isPortInRange(port) {
+  return port >= MYSQL_PORT_MIN && port <= MYSQL_PORT_MAX;
+}
+
 function loadConfigFile() {
   if (!fs.existsSync(CONFIG_PATH)) {
     if (!fs.existsSync(EXAMPLE_PATH)) {
@@ -161,9 +195,10 @@ function saveConfigFile(config) {
 
 function getMysqlSettings(config) {
   const mysql = config.mysql || {};
+  const port = Number(mysql.port);
   return {
     host: mysql.host || 'localhost',
-    port: Number(mysql.port || 3306),
+    port: port > 0 ? port : MYSQL_PORT_MIN,
     user: mysql.user || 'tiktok',
     password: mysql.password || 'tiktokpass',
     database: mysql.database || 'tiktok_mod',
@@ -279,13 +314,62 @@ function installSystemDependencies() {
     run(
       'sudo apt-get install -y mysql-server xvfb libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1 libasound2'
     );
-    run('sudo systemctl enable mysql');
-    run('sudo systemctl start mysql');
+    runOptional('sudo systemctl enable mysql');
+    if (!runOptional('sudo systemctl start mysql')) {
+      warn('MySQL не запустился сразу — порт будет настроен на следующем шаге');
+    } else {
+      ok('MySQL service запущен');
+    }
     ok('Системные пакеты установлены');
     return;
   }
 
   warn('apt не найден — установите пакеты вручную (см. README)');
+}
+
+function configureMysqlPort(port) {
+  const content = `[mysqld]\nport = ${port}\nbind-address = 127.0.0.1\n`;
+  const tmp = '/tmp/tiktok-mod-mysql.cnf';
+  fs.writeFileSync(tmp, content);
+  run(`sudo cp ${tmp} ${MYSQL_CONF_DROPIN}`);
+  ok(`Конфиг MySQL: порт ${port}`);
+}
+
+function tryRepairMysql() {
+  runOptional('sudo mkdir -p /var/run/mysqld');
+  runOptional('sudo chown mysql:mysql /var/run/mysqld');
+  runOptional('sudo rm -f /var/lib/mysql/mysql.sock.lock');
+}
+
+function startMysqlService() {
+  tryRepairMysql();
+  if (runOptional('sudo systemctl restart mysql')) return true;
+  return runOptional('sudo systemctl start mysql');
+}
+
+async function ensureMysqlPort(config) {
+  config.mysql = config.mysql || {};
+  const mysqlConfig = getMysqlSettings(config);
+  const configuredPort = Number(config.mysql.port);
+
+  if (configuredPort > 0 && isPortInRange(configuredPort) && (await canConnectAsAppUser(mysqlConfig))) {
+    ok(`MySQL уже работает на порту ${configuredPort}`);
+    return configuredPort;
+  }
+
+  log(`Поиск свободного порта MySQL (${MYSQL_PORT_MIN}-${MYSQL_PORT_MAX})...`);
+  const port = await findFreePort();
+  config.mysql.port = port;
+  saveConfigFile(config);
+  ok(`Выбран порт MySQL: ${port}`);
+
+  configureMysqlPort(port);
+
+  if (!startMysqlService()) {
+    warn('systemctl не смог запустить MySQL');
+  }
+
+  return port;
 }
 
 async function ensureLocalMysql(config, options) {
@@ -299,8 +383,10 @@ async function ensureLocalMysql(config, options) {
   } catch (err) {
     fail(
       `${err.message}\n` +
-        'Запустите MySQL:\n' +
-        '  sudo systemctl start mysql'
+        'Проверьте MySQL:\n' +
+        `  sudo journalctl -xeu mysql.service\n` +
+        `  sudo systemctl restart mysql\n` +
+        `  cat ${MYSQL_CONF_DROPIN}`
     );
   }
 
@@ -429,6 +515,7 @@ async function main() {
   installPlaywright();
 
   const config = await promptConfig(options);
+  await ensureMysqlPort(config);
   await ensureLocalMysql(config, options);
 
   log('Применение миграций таблиц...');

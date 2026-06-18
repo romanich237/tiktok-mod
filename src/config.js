@@ -42,7 +42,7 @@ function getMysqlConfig() {
   const mysql = config.mysql || {};
   return {
     host: mysql.host || 'localhost',
-    port: Number(mysql.port || 3306),
+    port: mysql.port > 0 ? Number(mysql.port) : 3306,
     user: mysql.user || 'tiktok',
     password: mysql.password || 'tiktokpass',
     database: mysql.database || 'tiktok_mod',

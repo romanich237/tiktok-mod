@@ -39,7 +39,7 @@ chmod +x install.sh
 2. Установит MySQL, xvfb и библиотеки для Chromium (через apt)
 3. Установит npm-зависимости и Playwright
 4. Создаст `config.json` (спросит токен бота и Telegram ID)
-5. Создаст базу `tiktok_mod` в локальном MySQL
+5. Создаст базу `tiktok_mod` в локальном MySQL (порт 2000–3000 выбирается автоматически)
 6. Применит миграции таблиц
 7. Запустит бота через PM2
 
@@ -95,7 +95,7 @@ nano config.json
   },
   "mysql": {
     "host": "localhost",
-    "port": 3306,
+    "port": 0,
     "user": "tiktok",
     "password": "tiktokpass",
     "database": "tiktok_mod"
@@ -221,7 +221,7 @@ tiktok-mod/
 
 | Проблема | Решение |
 |----------|---------|
-| MySQL недоступен | `sudo systemctl status mysql` |
+| MySQL недоступен | `sudo systemctl status mysql` и `sudo journalctl -xeu mysql.service` |
 | Браузер не запускается | `sudo npx playwright install-deps chromium` |
 | Нет дисплея для `/login` | PM2 уже использует xvfb-run; иначе скопируйте `sessions/` |
 | `SESSION_EXPIRED` | `/login` заново |
