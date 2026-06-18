@@ -41,21 +41,19 @@ chmod +x install.sh
 4. Создаст `config.json` (спросит токен бота и Telegram ID)
 5. Создаст базу `tiktok_mod` в локальном MySQL
 6. Применит миграции таблиц
+7. Запустит бота через PM2
 
 ### Флаги установщика
 
 | Флаг | Описание |
 |------|----------|
-| `--pm2` | Запустить через PM2 |
-| `--systemd` | Установить systemd-сервис |
+| `--systemd` | Вместо PM2 — systemd-сервис |
 | `--yes` | Без вопросов |
 | `--token TOKEN` | Токен бота |
 | `--user-id ID` | Telegram ID |
-| `--mysql-root PASS` | Пароль root MySQL |
-| `--skip-system-deps` | Не ставить apt-пакеты |
 
 ```bash
-./install.sh --token "123:ABC" --user-id 987654321 --mysql-root "pass" --pm2
+./install.sh --token "123:ABC" --user-id 987654321
 ```
 
 ---
@@ -105,14 +103,7 @@ nano config.json
 }
 ```
 
-### 4. База данных
-
-```bash
-sudo mysql -u root -p < sql/000_create_database.sql
-npm run migrate
-```
-
-### 5. Запуск
+### 4. Запуск
 
 ```bash
 npm start
@@ -128,16 +119,15 @@ xvfb-run npm start
 
 ## Фоновый запуск
 
-### PM2 (рекомендуется)
+По умолчанию `./install.sh` сам ставит PM2 и запускает бота.
 
 ```bash
-sudo npm install -g pm2
-pm2 start ecosystem.config.js
-pm2 save
-pm2 startup
+pm2 logs tiktok-mod
+pm2 restart tiktok-mod
+pm2 status
 ```
 
-### systemd
+### systemd (опционально)
 
 ```bash
 sudo cp deploy/tiktok-mod.service /etc/systemd/system/
@@ -234,7 +224,7 @@ tiktok-mod/
 | Браузер не запускается | `sudo npx playwright install-deps chromium` |
 | Нет дисплея для `/login` | `xvfb-run npm start` или скопируйте `sessions/` |
 | `SESSION_EXPIRED` | `/login` заново |
-| Access denied (MySQL) | `sudo mysql < sql/000_create_database.sql` |
+| Access denied (MySQL) | Запустите `./install.sh` заново |
 
 ---
 

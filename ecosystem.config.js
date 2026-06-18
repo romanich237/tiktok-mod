@@ -3,6 +3,8 @@ module.exports = {
     {
       name: 'tiktok-mod',
       script: 'src/index.js',
+      interpreter: 'xvfb-run',
+      interpreter_args: '-a node',
       instances: 1,
       autorestart: true,
       max_memory_restart: '512M',

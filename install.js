@@ -186,13 +186,10 @@ function ensureDirs() {
 function parseArgs() {
   const args = process.argv.slice(2);
   return {
-    usePm2: args.includes('--pm2'),
     useSystemd: args.includes('--systemd'),
     nonInteractive: args.includes('--yes') || args.includes('-y'),
     botToken: getArgValue(args, '--token'),
     userId: getArgValue(args, '--user-id'),
-    mysqlRootPassword: getArgValue(args, '--mysql-root'),
-    skipSystemDeps: args.includes('--skip-system-deps'),
   };
 }
 
@@ -275,12 +272,7 @@ async function setupLocalDatabase(mysqlConfig, rootPassword) {
   await conn.end();
 }
 
-function installSystemDependencies(options) {
-  if (options.skipSystemDeps) {
-    warn('Пропуск системных зависимостей (--skip-system-deps)');
-    return;
-  }
-
+function installSystemDependencies() {
   if (commandExists('apt-get')) {
     log('Установка системных пакетов (apt)...');
     run('sudo apt-get update -qq');
@@ -318,9 +310,9 @@ async function ensureLocalMysql(config, options) {
   }
 
   log('Создание базы и пользователя...');
-  let rootPassword = options.mysqlRootPassword;
+  let rootPassword = '';
 
-  if (!rootPassword && !options.nonInteractive) {
+  if (!options.nonInteractive) {
     rootPassword = await ask('Пароль root MySQL (Enter — если пустой): ', { hidden: true });
   }
 
@@ -349,6 +341,47 @@ function installPlaywright() {
     warn('playwright install-deps не выполнен — при ошибках браузера запустите: sudo npx playwright install-deps chromium');
     ok('Chromium установлен');
   }
+}
+
+function setupPm2() {
+  if (!commandExists('pm2')) {
+    log('Установка PM2...');
+    run('sudo npm install -g pm2');
+  }
+
+  const hasApp = spawnSync('pm2', ['describe', 'tiktok-mod'], {
+    cwd: ROOT,
+    stdio: 'ignore',
+    shell: '/bin/bash',
+  }).status === 0;
+
+  if (hasApp) {
+    run('pm2 restart tiktok-mod');
+  } else {
+    run('pm2 start ecosystem.config.js');
+  }
+
+  run('pm2 save');
+
+  const user = process.env.SUDO_USER || process.env.USER || 'root';
+  const home = process.env.HOME || `/home/${user}`;
+  try {
+    const out = execSync(`pm2 startup systemd -u ${user} --hp ${home}`, {
+      encoding: 'utf8',
+      cwd: ROOT,
+      shell: '/bin/bash',
+    });
+    const startupCmd = out.match(/sudo .+/)?.[0];
+    if (startupCmd) {
+      run(startupCmd);
+    }
+  } catch {
+    warn('Автозапуск PM2 после перезагрузки не настроен — выполните: pm2 startup');
+  }
+
+  ok('Бот запущен через PM2');
+  console.log('  pm2 logs tiktok-mod');
+  console.log('  pm2 status');
 }
 
 function setupSystemd() {
@@ -387,7 +420,7 @@ async function main() {
   ok(`Node.js ${process.versions.node}`);
 
   ensureDirs();
-  installSystemDependencies(options);
+  installSystemDependencies();
 
   log('Установка npm-зависимостей...');
   run('npm install');
@@ -409,34 +442,11 @@ async function main() {
   console.log('');
   log('=== Установка завершена ===');
   console.log('');
-  console.log('Запуск:');
-  console.log('  npm start');
-  console.log('  xvfb-run npm start          # если нет дисплея (для /login)');
-  console.log('');
 
   if (options.useSystemd) {
     setupSystemd();
-  } else if (options.usePm2) {
-    if (!commandExists('pm2')) {
-      log('Установка PM2...');
-      run('sudo npm install -g pm2');
-    }
-    run('pm2 start ecosystem.config.js');
-    run('pm2 save');
-    ok('Бот запущен через PM2');
-    console.log('  pm2 logs tiktok-mod');
-    console.log('  pm2 startup');
-  } else if (!options.nonInteractive) {
-    const startNow = await ask('Запустить бота сейчас? (y/n): ');
-    if (['y', 'yes', 'д', 'да'].includes(startNow.toLowerCase())) {
-      log('Запуск бота...');
-      const child = spawnSync('npm', ['start'], {
-        cwd: ROOT,
-        stdio: 'inherit',
-        shell: '/bin/bash',
-      });
-      process.exit(child.status ?? 0);
-    }
+  } else {
+    setupPm2();
   }
 
   console.log('');
