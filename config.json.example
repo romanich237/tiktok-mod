@@ -3,12 +3,8 @@
     "botToken": "your_bot_token_here",
     "allowedUserIds": [123456789]
   },
-  "mysql": {
-    "host": "localhost",
-    "port": 0,
-    "user": "tiktok",
-    "password": "tiktokpass",
-    "database": "tiktok_mod"
+  "database": {
+    "file": "data/tiktok_mod.db"
   },
   "updater": {
     "enabled": true,

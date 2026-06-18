@@ -1,7 +1,6 @@
 [Unit]
 Description=TikTok Mod Telegram Bot
-After=network.target tiktok-mod-mysql.service
-Wants=tiktok-mod-mysql.service
+After=network.target
 
 [Service]
 Type=simple

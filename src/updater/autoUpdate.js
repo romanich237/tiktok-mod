@@ -37,9 +37,6 @@ async function applyUpdate(branch) {
     logger.info('Installing dependencies...');
     execSync('npm install', { cwd: ROOT, stdio: 'inherit' });
 
-    logger.info('Running migrations...');
-    execSync('npm run migrate', { cwd: ROOT, stdio: 'inherit' });
-
     logger.info('Restarting application...');
     execSync('pm2 restart ecosystem.config.js', { cwd: ROOT, stdio: 'inherit' });
   } catch (err) {

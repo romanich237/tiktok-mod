@@ -1,22 +1,37 @@
-const mysql = require('mysql2/promise');
-const { env } = require('../config');
+const Database = require('better-sqlite3');
+const fs = require('fs');
+const path = require('path');
+const { getDatabasePath, ROOT } = require('../config');
 
-let pool;
+let db;
+let schemaReady = false;
 
-function getPool() {
-  if (!pool) {
-    pool = mysql.createPool({
-      host: env.mysql.host,
-      port: env.mysql.port,
-      user: env.mysql.user,
-      password: env.mysql.password,
-      database: env.mysql.database,
-      waitForConnections: true,
-      connectionLimit: 10,
-      timezone: '+00:00',
-    });
+function initSchema() {
+  if (schemaReady) return;
+
+  const sqlPath = path.join(ROOT, 'sql', '001_init.sql');
+  const sql = fs.readFileSync(sqlPath, 'utf8');
+  const statements = sql
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  for (const statement of statements) {
+    db.exec(statement);
   }
-  return pool;
+  schemaReady = true;
 }
 
-module.exports = { getPool };
+function getDb() {
+  if (!db) {
+    const dbPath = getDatabasePath();
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    initSchema();
+  }
+  return db;
+}
+
+module.exports = { getDb };

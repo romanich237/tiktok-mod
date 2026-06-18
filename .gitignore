@@ -4,8 +4,8 @@ sessions/*
 !sessions/.gitkeep
 logs/*
 !logs/.gitkeep
-mysql-data/
-deploy/mysql-local.cnf
+data/*
+!data/.gitkeep
 .env
 *.log
 .DS_Store

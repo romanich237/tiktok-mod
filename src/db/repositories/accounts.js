@@ -1,33 +1,35 @@
-const { getPool } = require('../connection');
+const { getDb } = require('../connection');
 const { getStorageStatePath } = require('../../config');
 
-async function ensureAccount(accountId) {
-  const pool = getPool();
+function ensureAccount(accountId) {
   const sessionPath = getStorageStatePath(accountId);
-  await pool.query(
-    `INSERT INTO accounts (id, session_path, is_logged_in)
-     VALUES (?, ?, 0)
-     ON DUPLICATE KEY UPDATE session_path = VALUES(session_path)`,
-    [accountId, sessionPath]
-  );
+  getDb()
+    .prepare(
+      `INSERT INTO accounts (id, session_path, is_logged_in)
+       VALUES (?, ?, 0)
+       ON CONFLICT(id) DO UPDATE SET
+         session_path = excluded.session_path,
+         updated_at = datetime('now')`
+    )
+    .run(accountId, sessionPath);
 }
 
-async function setLoggedIn(accountId, isLoggedIn) {
-  const pool = getPool();
-  await ensureAccount(accountId);
-  await pool.query(
-    `UPDATE accounts
-     SET is_logged_in = ?, last_login_at = IF(?, NOW(), last_login_at)
-     WHERE id = ?`,
-    [isLoggedIn ? 1 : 0, isLoggedIn ? 1 : 0, accountId]
-  );
+function setLoggedIn(accountId, isLoggedIn) {
+  ensureAccount(accountId);
+  getDb()
+    .prepare(
+      `UPDATE accounts
+       SET is_logged_in = ?,
+           last_login_at = CASE WHEN ? THEN datetime('now') ELSE last_login_at END,
+           updated_at = datetime('now')
+       WHERE id = ?`
+    )
+    .run(isLoggedIn ? 1 : 0, isLoggedIn ? 1 : 0, accountId);
 }
 
-async function getAccount(accountId) {
-  const pool = getPool();
-  await ensureAccount(accountId);
-  const [rows] = await pool.query('SELECT * FROM accounts WHERE id = ?', [accountId]);
-  return rows[0] || null;
+function getAccount(accountId) {
+  ensureAccount(accountId);
+  return getDb().prepare('SELECT * FROM accounts WHERE id = ?').get(accountId) || null;
 }
 
 module.exports = {

@@ -1,4 +1,3 @@
-const { migrate } = require('./db/migrate');
 const { createBot, registerBotCommands } = require('./bot');
 const { initScheduler, stopScheduler, registerSendNow } = require('./scheduler/emojiJob');
 const { initAutoUpdater, stopAutoUpdater } = require('./updater/autoUpdate');
@@ -7,9 +6,6 @@ const logger = require('./logger');
 
 async function main() {
   getTelegramBotToken();
-
-  logger.info('Running database migration...');
-  await migrate();
 
   const bot = createBot();
   registerSendNow(bot);

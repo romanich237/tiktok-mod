@@ -10,7 +10,7 @@
 - Автоотправка эмодзи каждые 6–12 часов
 - Уведомления об отправках и ошибках
 
-**База данных:** отдельный MySQL в папке `mysql-data/` (не зависит от системного `mysql.service`).
+**База данных:** SQLite-файл `data/tiktok_mod.db` (ничего ставить не нужно).
 
 ---
 
@@ -20,7 +20,6 @@
 |-----------|--------|
 | ОС | Ubuntu 20.04+ / Debian 11+ |
 | Node.js | 18+ |
-| MySQL Server | 8.0+ |
 
 ---
 
@@ -36,12 +35,11 @@ chmod +x install.sh
 Скрипт автоматически:
 
 1. Проверит Ubuntu/Debian и Node.js
-2. Установит пакеты MySQL (только бинарники), xvfb и библиотеки для Chromium
+2. Установит xvfb и библиотеки для Chromium
 3. Установит npm-зависимости и Playwright
 4. Создаст `config.json` (спросит токен бота и Telegram ID)
-5. Поднимет локальный MySQL в `mysql-data/` (порт 2000–3000 выбирается автоматически)
-6. Создаст базу `tiktok_mod` и применит миграции
-7. Запустит MySQL и бота через PM2
+5. Создаст файл базы `data/tiktok_mod.db` при первом запуске
+6. Запустит бота через PM2
 
 ### Флаги установщика
 
@@ -64,10 +62,9 @@ chmod +x install.sh
 
 ```bash
 sudo apt update
-sudo apt install -y nodejs npm mysql-server xvfb \
-  libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1 libasound2
-sudo systemctl stop mysql
-sudo systemctl disable mysql
+sudo apt install -y nodejs npm xvfb \
+  libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1 libasound2 \
+  build-essential python3
 ```
 
 ### 2. Проект
@@ -93,12 +90,8 @@ nano config.json
     "botToken": "ТОКЕН_ОТ_@BotFather",
     "allowedUserIds": [ВАШ_TELEGRAM_ID]
   },
-  "mysql": {
-    "host": "localhost",
-    "port": 0,
-    "user": "tiktok",
-    "password": "tiktokpass",
-    "database": "tiktok_mod"
+  "database": {
+    "file": "data/tiktok_mod.db"
   }
 }
 ```
@@ -109,22 +102,14 @@ nano config.json
 npm start
 ```
 
-Или напрямую:
-
-```bash
-pm2 start ecosystem.config.js
-pm2 save
-```
-
 ---
 
 ## Фоновый запуск
 
-По умолчанию `./install.sh` сам ставит PM2 и запускает MySQL + бота.
+По умолчанию `./install.sh` сам ставит PM2 и запускает бота.
 
 ```bash
 pm2 logs tiktok-mod
-pm2 logs tiktok-mod-mysql
 pm2 restart ecosystem.config.js
 pm2 status
 ```
@@ -210,9 +195,7 @@ tiktok-mod/
 ├── config.json.example
 ├── ecosystem.config.js
 ├── deploy/tiktok-mod.service
-├── deploy/tiktok-mod-mysql.service
-├── scripts/mysql-local.sh
-├── mysql-data/
+├── data/tiktok_mod.db
 ├── src/
 ├── sql/
 ├── sessions/
@@ -225,11 +208,10 @@ tiktok-mod/
 
 | Проблема | Решение |
 |----------|---------|
-| MySQL недоступен | `pm2 logs tiktok-mod-mysql`, `cat logs/mysql-local.log` |
+| Ошибка базы данных | Удалите `data/tiktok_mod.db` и перезапустите бота |
 | Браузер не запускается | `sudo npx playwright install-deps chromium` |
-| Нет дисплея для `/login` | PM2 уже использует xvfb-run; иначе скопируйте `sessions/` |
+| Нет дисплея для `/login` | PM2 использует xvfb-run; иначе скопируйте `sessions/` |
 | `SESSION_EXPIRED` | `/login` заново |
-| Access denied (MySQL) | Запустите `./install.sh` заново |
 
 ---
 

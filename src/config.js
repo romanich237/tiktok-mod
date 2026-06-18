@@ -15,7 +15,13 @@ function loadConfig() {
   }
 
   const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
-  return JSON.parse(raw);
+  const parsed = JSON.parse(raw);
+  if (parsed.mysql && !parsed.database) {
+    parsed.database = { file: 'data/tiktok_mod.db' };
+    delete parsed.mysql;
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(parsed, null, 2), 'utf8');
+  }
+  return parsed;
 }
 
 const config = loadConfig();
@@ -38,15 +44,9 @@ function getTelegramBotToken() {
   return token;
 }
 
-function getMysqlConfig() {
-  const mysql = config.mysql || {};
-  return {
-    host: mysql.host || 'localhost',
-    port: mysql.port > 0 ? Number(mysql.port) : 3306,
-    user: mysql.user || 'tiktok',
-    password: mysql.password || 'tiktokpass',
-    database: mysql.database || 'tiktok_mod',
-  };
+function getDatabasePath() {
+  const file = config.database?.file || 'data/tiktok_mod.db';
+  return path.isAbsolute(file) ? file : path.join(ROOT, file);
 }
 
 module.exports = {
@@ -56,13 +56,13 @@ module.exports = {
   getSessionDir,
   getStorageStatePath,
   getTelegramBotToken,
-  getMysqlConfig,
+  getDatabasePath,
   env: {
     get telegramBotToken() {
       return getTelegramBotToken();
     },
-    get mysql() {
-      return getMysqlConfig();
+    get databaseFile() {
+      return getDatabasePath();
     },
   },
 };

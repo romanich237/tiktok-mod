@@ -8,16 +8,17 @@
     "stop": "pm2 stop tiktok-mod",
     "restart": "pm2 restart tiktok-mod",
     "logs": "pm2 logs tiktok-mod",
-    "migrate": "node src/db/migrate.js",
     "setup": "bash install.sh"
   },
   "engines": {
     "node": ">=18",
     "npm": ">=9"
   },
-  "os": ["linux"],
+  "os": [
+    "linux"
+  ],
   "dependencies": {
-    "mysql2": "^3.12.0",
+    "better-sqlite3": "^11.10.0",
     "node-cron": "^3.0.3",
     "playwright": "^1.50.1",
     "telegraf": "^4.16.3",
