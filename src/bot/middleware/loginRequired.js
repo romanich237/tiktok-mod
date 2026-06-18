@@ -1,6 +1,6 @@
-const { loginMethodsKeyboard } = require('../keyboards/inline');
 const loginSession = require('../loginSession');
-const { armLoginChoice } = require('../handlers/login');
+const { promptLoginMethods } = require('../handlers/login');
+const { isAccountAuthorized } = require('../auth');
 
 const ALLOWED_COMMANDS = new Set(['/start', '/login', '/login_cancel']);
 
@@ -23,13 +23,7 @@ function loginRequiredMiddleware() {
       return next();
     }
 
-    const userId = ctx.from?.id;
-    if (userId) armLoginChoice(userId);
-
-    await ctx.reply(
-      '🔐 Сначала войдите в TikTok.\n\nВыберите способ входа:',
-      loginMethodsKeyboard()
-    );
+    await promptLoginMethods(ctx);
   };
 }
 

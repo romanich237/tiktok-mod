@@ -1,12 +1,13 @@
 const { Markup } = require('telegraf');
 
-function loginMethodsKeyboard() {
+function loginMethodsKeyboard(token) {
+  const suffix = token ? `:${token}` : '';
   return Markup.inlineKeyboard([
     [
-      Markup.button.callback('📷 QR-код', 'login_method:qr'),
-      Markup.button.callback('📱 Телефон', 'login_method:phone'),
+      Markup.button.callback('📷 QR-код', `login_method:qr${suffix}`),
+      Markup.button.callback('📱 Телефон', `login_method:phone${suffix}`),
     ],
-    [Markup.button.callback('✉️ Email', 'login_method:email')],
+    [Markup.button.callback('✉️ Email', `login_method:email${suffix}`)],
     [Markup.button.callback('❌ Отмена', 'login_cancel')],
   ]);
 }

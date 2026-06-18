@@ -2,6 +2,7 @@ const { createBot, registerBotCommands } = require('./bot');
 const { initScheduler, stopScheduler, registerSendNow } = require('./scheduler/emojiJob');
 const { initAutoUpdater, stopAutoUpdater } = require('./updater/autoUpdate');
 const { getTelegramBotToken } = require('./config');
+const { version } = require('../package.json');
 const logger = require('./logger');
 
 async function main() {
@@ -10,6 +11,7 @@ async function main() {
   const bot = createBot();
   registerSendNow(bot);
 
+  logger.info(`TikTok Mod v${version} starting...`);
   logger.info('Registering Telegram bot commands...');
   await registerBotCommands(bot);
 

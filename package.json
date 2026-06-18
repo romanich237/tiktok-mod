@@ -1,6 +1,6 @@
 {
   "name": "tiktok-mod",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "TikTok DM emoji automation with Telegram control (Ubuntu/Debian)",
   "main": "src/index.js",
   "scripts": {
