@@ -19,7 +19,19 @@ function initSchema() {
   for (const statement of statements) {
     db.exec(statement);
   }
+
+  migrateSchema();
   schemaReady = true;
+}
+
+function migrateSchema() {
+  const columns = db.prepare('PRAGMA table_info(accounts)').all().map((col) => col.name);
+  if (!columns.includes('tiktok_username')) {
+    db.exec('ALTER TABLE accounts ADD COLUMN tiktok_username TEXT NULL');
+  }
+  if (!columns.includes('display_name')) {
+    db.exec('ALTER TABLE accounts ADD COLUMN display_name TEXT NULL');
+  }
 }
 
 function getDb() {

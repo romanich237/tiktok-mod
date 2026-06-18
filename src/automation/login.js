@@ -3,6 +3,7 @@ const accountsRepo = require('../db/repositories/accounts');
 const browserManager = require('./browser');
 const selectors = require('./selectors');
 const { safeWait, isPageOpen, formatBrowserError, dismissCookieBanner, safeClick } = require('./pageUtils');
+const { syncAccountProfile } = require('./profileParser');
 const logger = require('../logger');
 
 const activePages = new Map();
@@ -302,6 +303,9 @@ async function prepareBrowser(accountId) {
 
 async function finalizeLogin(page, accountId, userId) {
   await waitForLoginComplete(page, accountId, userId);
+  await syncAccountProfile(page, accountId, { returnToMessages: false }).catch((err) => {
+    logger.warn('Profile sync after login failed', err);
+  });
   await page.close();
   activePages.delete(userId);
   await browserManager.closeBrowser();
@@ -396,6 +400,9 @@ async function completeQrLogin(userId, onQrImage) {
     if (await isLoggedIn(page)) {
       await browserManager.saveStorageState(accountId);
       await accountsRepo.setLoggedIn(accountId, true);
+      await syncAccountProfile(page, accountId).catch((err) => {
+        logger.warn('Profile sync after QR login failed', err);
+      });
       await page.close();
       activePages.delete(userId);
       await browserManager.closeBrowser();
@@ -407,6 +414,9 @@ async function completeQrLogin(userId, onQrImage) {
       if (await probeMessagesSession(page, userId)) {
         await browserManager.saveStorageState(accountId);
         await accountsRepo.setLoggedIn(accountId, true);
+        await syncAccountProfile(page, accountId).catch((err) => {
+          logger.warn('Profile sync after QR probe failed', err);
+        });
         await page.close();
         activePages.delete(userId);
         await browserManager.closeBrowser();
@@ -464,6 +474,12 @@ async function ensureSession(accountId) {
   if (!(await isLoggedIn(page))) {
     await accountsRepo.setLoggedIn(accountIdResolved, false);
     throw new Error('SESSION_EXPIRED');
+  }
+
+  if (!account?.tiktok_username) {
+    await syncAccountProfile(page, accountIdResolved).catch((err) => {
+      logger.warn('Profile sync in ensureSession failed', err);
+    });
   }
 
   return page;

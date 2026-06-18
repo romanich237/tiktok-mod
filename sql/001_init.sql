@@ -1,6 +1,8 @@
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
   session_path TEXT NOT NULL,
+  tiktok_username TEXT NULL,
+  display_name TEXT NULL,
   is_logged_in INTEGER NOT NULL DEFAULT 0,
   last_login_at TEXT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),

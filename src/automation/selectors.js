@@ -86,6 +86,13 @@ module.exports = {
     ],
   },
 
+  profile: {
+    title: '[data-e2e="user-title"]',
+    subtitle: '[data-e2e="user-subtitle"]',
+    iconLink: 'a[href*="/@"][data-e2e="profile-icon"]',
+    navLink: '[data-e2e="nav-profile"] a[href*="/@"]',
+  },
+
   messages: {
     chatList: [
       '[data-e2e="dm-new-conversation-list"]',

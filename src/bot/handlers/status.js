@@ -1,5 +1,6 @@
 const { config } = require('../../config');
 const accountsRepo = require('../../db/repositories/accounts');
+const { getAccountLabel } = require('../../db/repositories/accounts');
 const chatsRepo = require('../../db/repositories/chats');
 const schedulerRepo = require('../../db/repositories/scheduler');
 const { getUpdaterStatus } = require('../../updater/autoUpdate');
@@ -13,6 +14,7 @@ function registerStatus(bot) {
   const showStatus = async (ctx) => {
     const accountId = config.tiktok.accountId;
     const account = await accountsRepo.getAccount(accountId);
+    const accountLabel = getAccountLabel(account, accountId);
     const chats = await chatsRepo.getChatsByAccount(accountId);
     const enabled = chats.filter((c) => c.enabled).length;
     const sched = await schedulerRepo.getSchedulerState(accountId);
@@ -30,7 +32,7 @@ function registerStatus(bot) {
 
     const text =
       `📊 Статус TikTok Mod\n\n` +
-      `Аккаунт: ${accountId}\n` +
+      `Аккаунт: ${accountLabel}\n` +
       `Сессия: ${account?.is_logged_in ? '✅ активна' : '❌ не авторизован'}\n` +
       `Чатов в базе: ${chats.length}\n` +
       `Выбрано для отправки: ${enabled}\n` +

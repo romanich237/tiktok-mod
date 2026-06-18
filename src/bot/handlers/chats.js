@@ -3,6 +3,7 @@ const loginAutomation = require('../../automation/login');
 const chatParser = require('../../automation/chatParser');
 const browserManager = require('../../automation/browser');
 const chatsRepo = require('../../db/repositories/chats');
+const accountsRepo = require('../../db/repositories/accounts');
 const { chatsKeyboard } = require('../keyboards/inline');
 const logger = require('../../logger');
 
@@ -42,13 +43,24 @@ async function refreshChats(ctx) {
     await ctx.answerCbQuery?.('Обновляю список...');
 
     const page = await loginAutomation.ensureSession(accountId);
+    const account = await accountsRepo.getAccount(accountId);
+    if (!account?.tiktok_username) {
+      const profileParser = require('../../automation/profileParser');
+      await profileParser.syncAccountProfile(page, accountId).catch((err) => {
+        logger.warn('Profile sync before chat parse failed', err);
+      });
+    }
+
     const parsed = await chatParser.parseAndReturn(page);
     await chatsRepo.upsertChats(accountId, parsed);
     await page.close();
     await browserManager.closeBrowser();
 
     const chats = await chatsRepo.getChatsByAccount(accountId);
-    const text = `✅ Найдено ${parsed.length} чатов`;
+    const text =
+      parsed.length > 0
+        ? `✅ Найдено ${parsed.length} чатов`
+        : '⚠️ Чаты не найдены на странице TikTok.\nПроверьте, что в TikTok есть переписки, и попробуйте снова.';
 
     if (ctx.callbackQuery) {
       await ctx.editMessageText(

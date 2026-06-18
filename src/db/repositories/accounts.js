@@ -27,13 +27,41 @@ function setLoggedIn(accountId, isLoggedIn) {
     .run(isLoggedIn ? 1 : 0, isLoggedIn ? 1 : 0, accountId);
 }
 
+function setProfile(accountId, profile) {
+  ensureAccount(accountId);
+  getDb()
+    .prepare(
+      `UPDATE accounts
+       SET tiktok_username = ?,
+           display_name = ?,
+           updated_at = datetime('now')
+       WHERE id = ?`
+    )
+    .run(profile.tiktokUsername, profile.displayName || profile.tiktokUsername, accountId);
+}
+
 function getAccount(accountId) {
   ensureAccount(accountId);
   return getDb().prepare('SELECT * FROM accounts WHERE id = ?').get(accountId) || null;
 }
 
+function getAccountLabel(account, accountId = 'default') {
+  if (account?.display_name && account?.tiktok_username) {
+    return `${account.display_name} (@${account.tiktok_username})`;
+  }
+  if (account?.tiktok_username) {
+    return `@${account.tiktok_username}`;
+  }
+  if (account?.display_name) {
+    return account.display_name;
+  }
+  return accountId;
+}
+
 module.exports = {
   ensureAccount,
   setLoggedIn,
+  setProfile,
   getAccount,
+  getAccountLabel,
 };
