@@ -320,6 +320,22 @@ async function cancelLogin(userId) {
   cancelledLogins.delete(userId);
 }
 
+async function cancelAllLogins() {
+  const userIds = [...activePages.keys()];
+  for (const userId of userIds) {
+    cancelledLogins.add(userId);
+  }
+  for (const userId of userIds) {
+    const page = activePages.get(userId);
+    if (page && isPageOpen(page)) {
+      await page.close().catch(() => {});
+    }
+    activePages.delete(userId);
+    cancelledLogins.delete(userId);
+  }
+  await browserManager.closeBrowser().catch(() => {});
+}
+
 async function startEmailLogin(userId) {
   const { page, accountId } = await prepareBrowser();
   activePages.set(userId, page);
@@ -470,6 +486,7 @@ module.exports = {
   loginPhoneSendCode,
   loginPhoneComplete,
   cancelLogin,
+  cancelAllLogins,
   ensureSession,
   formatBrowserError,
 };

@@ -18,27 +18,30 @@ const methodKeyboard = Markup.inlineKeyboard([
 ]);
 
 function registerLogin(bot) {
+  loginInProgress = false;
+  loginAutomation.cancelAllLogins().catch(() => {});
+
   bot.command('login', showLoginMethods);
   bot.command('login_cancel', cancelLogin);
   bot.hears('🔐 Войти', showLoginMethods);
 
   bot.action('start_auth', async (ctx) => {
-    await ctx.answerCbQuery();
+    await ctx.answerCbQuery().catch(() => {});
     await showLoginMethods(ctx);
   });
 
   bot.action('login_method:qr', async (ctx) => {
-    await ctx.answerCbQuery();
+    await ctx.answerCbQuery().catch(() => {});
     await beginQrLogin(ctx);
   });
 
   bot.action('login_method:phone', async (ctx) => {
-    await ctx.answerCbQuery();
+    await ctx.answerCbQuery().catch(() => {});
     await beginPhoneLogin(ctx);
   });
 
   bot.action('login_method:email', async (ctx) => {
-    await ctx.answerCbQuery();
+    await ctx.answerCbQuery().catch(() => {});
     await beginEmailLogin(ctx);
   });
 
@@ -78,28 +81,56 @@ function registerLogin(bot) {
     }
   });
 
-  async function showLoginMethods(ctx) {
+  async function resetLoginState(userId) {
     if (loginInProgress) {
-      await ctx.reply('⏳ Вход уже выполняется. /login_cancel — отменить');
-      return;
+      await loginAutomation.cancelLogin(userId).catch(() => {});
+    }
+    loginInProgress = false;
+    loginSession.clear(userId);
+  }
+
+  async function showLoginMethods(ctx) {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+
+    await resetLoginState(userId);
+    loginSession.set(userId, { step: 'choose_method' });
+
+    const text =
+      '🔐 Вход в TikTok\n\nВыберите способ входа.\nВсе данные вводятся здесь, в боте.';
+
+    if (ctx.callbackQuery?.message) {
+      try {
+        await ctx.editMessageText(text, methodKeyboard);
+        return;
+      } catch {
+        // message too old or unchanged — send a new one
+      }
     }
 
-    loginSession.set(ctx.from.id, { step: 'choose_method' });
+    await ctx.reply(text, methodKeyboard);
+  }
 
-    await ctx.reply(
-      '🔐 Вход в TikTok\n\nВыберите способ входа.\nВсе данные вводятся здесь, в боте.',
-      methodKeyboard
-    );
+  async function requireMethodChoice(ctx) {
+    const userId = ctx.from?.id;
+    if (!userId) return false;
+    const session = loginSession.get(userId);
+    if (session?.step === 'choose_method') return true;
+    await showLoginMethods(ctx);
+    return false;
   }
 
   async function beginQrLogin(ctx) {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    if (!(await requireMethodChoice(ctx))) return;
+
     if (loginInProgress) {
       await ctx.reply('⏳ Вход уже выполняется. /login_cancel — отменить');
       return;
     }
 
     loginInProgress = true;
-    const userId = ctx.from.id;
     try {
       loginSession.update(userId, { step: 'qr_waiting', method: 'qr' });
       await ctx.reply('📷 Открываю страницу QR-кода...');
@@ -134,25 +165,31 @@ function registerLogin(bot) {
   }
 
   async function beginPhoneLogin(ctx) {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    if (!(await requireMethodChoice(ctx))) return;
+
     if (loginInProgress) {
       await ctx.reply('⏳ Вход уже выполняется. /login_cancel — отменить');
       return;
     }
 
     loginInProgress = true;
-    const userId = ctx.from.id;
     loginSession.update(userId, { step: 'phone_number', method: 'phone' });
     await ctx.reply('📱 Введите номер телефона (например: +79001234567):');
   }
 
   async function beginEmailLogin(ctx) {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    if (!(await requireMethodChoice(ctx))) return;
+
     if (loginInProgress) {
       await ctx.reply('⏳ Вход уже выполняется. /login_cancel — отменить');
       return;
     }
 
     loginInProgress = true;
-    const userId = ctx.from.id;
     loginSession.update(userId, { step: 'email_username', method: 'email' });
     await ctx.reply('✉️ Введите email или username:');
   }

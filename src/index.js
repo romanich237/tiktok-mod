@@ -14,7 +14,7 @@ async function main() {
   await registerBotCommands(bot);
 
   logger.info('Starting Telegram bot...');
-  await bot.launch();
+  await bot.launch({ dropPendingUpdates: true });
 
   logger.info('Initializing scheduler...');
   await initScheduler();
