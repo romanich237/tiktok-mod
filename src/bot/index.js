@@ -1,6 +1,7 @@
 const { Telegraf } = require('telegraf');
 const { env } = require('../config');
 const { authMiddleware } = require('./middleware/auth');
+const { loginRequiredMiddleware } = require('./middleware/loginRequired');
 const { registerStart } = require('./handlers/start');
 const { registerLogin } = require('./handlers/login');
 const { registerChats } = require('./handlers/chats');
@@ -21,6 +22,7 @@ function createBot() {
 
   const bot = new Telegraf(token);
   bot.use(authMiddleware());
+  bot.use(loginRequiredMiddleware());
 
   registerStart(bot);
   registerLogin(bot);

@@ -1,7 +1,7 @@
 /**
  * TikTok web selectors — updated via @Browser DOM research (2026-06-18).
- * Login page confirmed: data-e2e="login-title", "channel-item", "tiktok-logo".
- * Messages page variants: data-e2e="conversation-item", "msg-item-content".
+ * Login: data-e2e="login-title", "channel-item", "tiktok-logo".
+ * Messages (2026 UI): data-e2e="dm-new-conversation-*", "dm-new-input-editor", "chat-uniqueid".
  */
 module.exports = {
   loggedInIndicators: [
@@ -85,23 +85,36 @@ module.exports = {
 
   messages: {
     chatList: [
+      '[data-e2e="dm-new-conversation-list"]',
       '[data-e2e="chat-list"]',
-      '[class*="messageMessageListlist"]',
       '[class*="ConversationList"]',
       'div[role="list"]',
     ],
     chatItem: [
+      '[data-e2e="dm-new-conversation-item"]',
       '[data-e2e="conversation-item"]',
       '[data-e2e="chat-list-item"]',
       '[class*="conversationConversationItem"]',
-      '[class*="ConversationItem"]',
       'div[role="listitem"]',
     ],
-    chatName: [
+    chatNickname: [
+      '[data-e2e="dm-new-conversation-nickname"]',
       '[data-e2e="chat-username"]',
       '[class*="PInfoNickname"]',
-      '[class*="Nickname"]',
-      'p[class*="title"]',
+      'p[class*="Nickname"]',
+    ],
+    chatAvatar: [
+      '[data-e2e="dm-new-conversation-avatar"] img',
+      '[data-e2e="conversation-item"] img',
+      'img',
+    ],
+    openChatUsername: [
+      '[data-e2e="chat-uniqueid"]',
+      '[data-e2e="dm-new-chat-nickname"]',
+    ],
+    chatPanel: [
+      '[data-e2e="dm-new-chatbox"]',
+      '[data-e2e="message-input-area"]',
     ],
     streakBadge: [
       '[data-e2e="streak-badge"]',
@@ -109,19 +122,28 @@ module.exports = {
       '[class*="streak"]',
     ],
     messageInput: [
+      '[data-e2e="dm-new-input-editor"] [contenteditable="true"]',
+      '[data-e2e="message-input-area"] [contenteditable="true"]',
+      '[data-e2e="dm-new-input-editor"]',
+      '[aria-label="Send a message..."]',
       'div[contenteditable="true"]',
       '[data-e2e="message-input"]',
-      'div[role="textbox"]',
       'textarea[placeholder*="Message"]',
       'textarea[placeholder*="Сообщение"]',
     ],
+    emojiButton: [
+      '[data-e2e="dm-new-emoji-btn"]',
+      '[aria-label="Click to add emojis"]',
+    ],
     sendButton: [
+      'button[aria-label="Send"]',
+      '[role="button"][aria-label="Send"]',
       '[data-e2e="message-send"]',
-      'button[type="submit"]',
       'button[aria-label*="Send"]',
       'button[aria-label*="Отправить"]',
     ],
     messageContent: [
+      '[data-e2e="dm-new-chat-item"]',
       '[data-e2e="msg-item-content"]',
       'pre',
     ],

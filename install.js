@@ -185,13 +185,41 @@ function installSystemDependencies() {
     log('Установка системных пакетов (apt)...');
     run('sudo apt-get update -qq');
     run(
-      'sudo apt-get install -y xvfb libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1 libasound2 build-essential python3'
+      'sudo apt-get install -y git xvfb libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1 libasound2 build-essential python3'
     );
     ok('Системные пакеты установлены');
     return;
   }
 
   warn('apt не найден — установите пакеты вручную (см. README)');
+}
+
+function ensureGitRepo() {
+  const repo = 'https://github.com/romanich237/tiktok-mod.git';
+  const branch = 'main';
+  const gitDir = path.join(ROOT, '.git');
+
+  if (!commandExists('git')) {
+    warn('git не установлен — автообновление с GitHub не будет работать');
+    return;
+  }
+
+  if (!fs.existsSync(gitDir)) {
+    log('Инициализация git для автообновления...');
+    run('git init');
+    run(`git remote add origin ${repo}`);
+    run(`git fetch origin ${branch}`);
+    run(`git checkout -B ${branch}`);
+    run(`git reset --hard origin/${branch}`);
+    ok('Git настроен');
+    return;
+  }
+
+  runOptional(`git remote get-url origin`) || run(`git remote add origin ${repo}`);
+  runOptional(`git fetch origin ${branch}`);
+  runOptional(`git branch -M ${branch}`);
+  runOptional(`git branch --set-upstream-to=origin/${branch} ${branch}`);
+  ok('Git готов к автообновлению');
 }
 
 function installPlaywright() {
@@ -290,6 +318,7 @@ async function main() {
   ok('Зависимости установлены');
 
   installPlaywright();
+  ensureGitRepo();
   await promptConfig(options);
 
   console.log('');

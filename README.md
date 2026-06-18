@@ -71,11 +71,25 @@ chmod +x install.sh
 
 ## Автообновление с GitHub
 
-Каждую минуту проверяется новая версия. При обновлении бот пишет:
+Каждую минуту бот проверяет [romanich237/tiktok-mod](https://github.com/romanich237/tiktok-mod).  
+При новом коммите:
 
-> Вышла новую версия проекта, перезапускаю сервер
+> Вышла новая версия проекта, перезапускаю сервер
 
-Проект должен быть установлен через `git clone` (не ZIP).
+Затем `git pull`, `npm install` и перезапуск PM2.
+
+**Требования на сервере:**
+- Установка через `git clone` (или `./install.sh` — настроит git автоматически)
+- В `config.json`: `"updater": { "enabled": true }`
+- Установлен `git`
+
+Проверка вручную:
+```bash
+cd ~/tiktok-mod
+git fetch origin main
+git status
+pm2 logs tiktok-mod
+```
 
 ---
 

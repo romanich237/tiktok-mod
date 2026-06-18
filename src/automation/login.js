@@ -2,33 +2,45 @@ const { config } = require('../config');
 const accountsRepo = require('../db/repositories/accounts');
 const browserManager = require('./browser');
 const selectors = require('./selectors');
+const { safeWait, isPageOpen, formatBrowserError } = require('./pageUtils');
 const logger = require('../logger');
 
 const activePages = new Map();
+const cancelledLogins = new Set();
+
+async function pause(page, ms, userId) {
+  await safeWait(page, ms, { userId, cancelledLogins });
+}
 
 async function isLoggedIn(page) {
-  const url = page.url();
-  if (url.includes('/login')) return false;
+  if (!isPageOpen(page)) return false;
 
-  for (const selector of selectors.loginPageIndicators) {
-    try {
-      const visible = await page.locator(selector).first().isVisible({ timeout: 1500 });
-      if (visible) return false;
-    } catch {
-      // continue
+  try {
+    const url = page.url();
+    if (url.includes('/login')) return false;
+
+    for (const selector of selectors.loginPageIndicators) {
+      try {
+        const visible = await page.locator(selector).first().isVisible({ timeout: 1500 });
+        if (visible) return false;
+      } catch {
+        // continue
+      }
     }
-  }
 
-  for (const selector of selectors.loggedInIndicators) {
-    try {
-      const visible = await page.locator(selector).first().isVisible({ timeout: 2000 });
-      if (visible) return true;
-    } catch {
-      // continue
+    for (const selector of selectors.loggedInIndicators) {
+      try {
+        const visible = await page.locator(selector).first().isVisible({ timeout: 2000 });
+        if (visible) return true;
+      } catch {
+        // continue
+      }
     }
-  }
 
-  return !url.includes('/login') && (url.includes('/messages') || url.includes('/@'));
+    return !url.includes('/login') && (url.includes('/messages') || url.includes('/@'));
+  } catch {
+    return false;
+  }
 }
 
 async function clickPhoneEmailChannel(page) {
@@ -47,7 +59,7 @@ async function clickPhoneEmailChannel(page) {
       text.includes('логин')
     ) {
       await item.click();
-      await page.waitForTimeout(2000);
+      await pause(page,2000);
       return true;
     }
   }
@@ -58,7 +70,7 @@ async function clickPhoneEmailChannel(page) {
   });
   if (channel) {
     await channel.click();
-    await page.waitForTimeout(2000);
+    await pause(page,2000);
     return true;
   }
 
@@ -74,7 +86,7 @@ async function clickQrChannel(page) {
     const text = ((await item.innerText().catch(() => '')) || '').toLowerCase();
     if (text.includes('qr') || text.includes('код')) {
       await item.click();
-      await page.waitForTimeout(2000);
+      await pause(page,2000);
       return true;
     }
   }
@@ -85,7 +97,7 @@ async function clickQrChannel(page) {
   });
   if (qrChannel) {
     await qrChannel.click();
-    await page.waitForTimeout(2000);
+    await pause(page,2000);
     return true;
   }
 
@@ -136,6 +148,12 @@ async function waitForQrCanvasReady(page) {
 }
 
 async function screenshotQrCode(page) {
+  if (!isPageOpen(page)) {
+    const err = new Error('LOGIN_CANCELLED');
+    err.code = 'LOGIN_CANCELLED';
+    throw err;
+  }
+
   await page.locator('[data-e2e="qr-code"]').first().waitFor({ state: 'visible', timeout: 10000 });
   await waitForQrCanvasReady(page);
 
@@ -177,7 +195,7 @@ async function openEmailLoginForm(page) {
     });
     if (emailLink) {
       await emailLink.click();
-      await page.waitForTimeout(2000);
+      await pause(page,2000);
     } else {
       await page.goto(selectors.login.emailLoginUrl, { waitUntil: 'domcontentloaded' });
     }
@@ -206,7 +224,7 @@ async function openPhoneLoginForm(page) {
     });
     if (phoneLink) {
       await phoneLink.click();
-      await page.waitForTimeout(2000);
+      await pause(page,2000);
     } else {
       await page.goto(selectors.login.phoneLoginUrl, { waitUntil: 'domcontentloaded' });
     }
@@ -240,9 +258,9 @@ async function submitCredentials(page, username, password) {
   }
 
   await usernameInput.fill(username);
-  await page.waitForTimeout(500);
+  await pause(page,500);
   await passwordInput.fill(password);
-  await page.waitForTimeout(500);
+  await pause(page,500);
 
   const submitBtn = await selectors.findFirst(page, selectors.login.submitButton, {
     visible: true,
@@ -256,7 +274,7 @@ async function submitCredentials(page, username, password) {
   }
 
   logger.info('Email/username отправлен');
-  await page.waitForTimeout(3000);
+  await pause(page,3000);
 }
 
 async function submitPhoneNumber(page, phone) {
@@ -271,7 +289,7 @@ async function submitPhoneNumber(page, phone) {
 
   const normalized = phone.replace(/\s+/g, '').replace(/^\+/, '');
   await phoneInput.fill(normalized);
-  await page.waitForTimeout(800);
+  await pause(page,800);
 
   const sendBtn = await selectors.findFirst(page, selectors.login.sendCodeButton, {
     visible: true,
@@ -284,7 +302,7 @@ async function submitPhoneNumber(page, phone) {
 
   await sendBtn.click();
   logger.info(`SMS-код запрошен для ${normalized}`);
-  await page.waitForTimeout(2000);
+  await pause(page,2000);
 }
 
 async function submitPhoneCode(page, code) {
@@ -298,7 +316,7 @@ async function submitPhoneCode(page, code) {
   }
 
   await codeInput.fill(code.replace(/\s+/g, ''));
-  await page.waitForTimeout(500);
+  await pause(page,500);
 
   const submitBtn = await selectors.findFirst(page, selectors.login.submitButton, {
     visible: true,
@@ -312,20 +330,26 @@ async function submitPhoneCode(page, code) {
   }
 
   logger.info('SMS-код отправлен');
-  await page.waitForTimeout(3000);
+  await pause(page,3000);
 }
 
-async function waitForLoginComplete(page, accountId) {
+async function waitForLoginComplete(page, accountId, userId) {
   const timeout = config.automation?.loginTimeoutMs || 300000;
   const start = Date.now();
 
   while (Date.now() - start < timeout) {
+    if (cancelledLogins.has(userId) || !isPageOpen(page)) {
+      const err = new Error('LOGIN_CANCELLED');
+      err.code = 'LOGIN_CANCELLED';
+      throw err;
+    }
+
     if (await isLoggedIn(page)) {
       await browserManager.saveStorageState(accountId);
       await accountsRepo.setLoggedIn(accountId, true);
       return true;
     }
-    await page.waitForTimeout(3000);
+    await pause(page, 3000, userId);
   }
 
   throw new Error('Время входа истекло (капча, неверный код или 2FA)');
@@ -344,7 +368,7 @@ async function prepareBrowser(accountId) {
 }
 
 async function finalizeLogin(page, accountId, userId) {
-  await waitForLoginComplete(page, accountId);
+  await waitForLoginComplete(page, accountId, userId);
   await page.close();
   activePages.delete(userId);
   await browserManager.closeBrowser();
@@ -352,12 +376,15 @@ async function finalizeLogin(page, accountId, userId) {
 }
 
 async function cancelLogin(userId) {
+  cancelledLogins.add(userId);
+
   const page = activePages.get(userId);
-  if (page) {
+  if (page && isPageOpen(page)) {
     await page.close().catch(() => {});
-    activePages.delete(userId);
   }
+  activePages.delete(userId);
   await browserManager.closeBrowser();
+  cancelledLogins.delete(userId);
 }
 
 async function startEmailLogin(userId) {
@@ -410,6 +437,12 @@ async function completeQrLogin(userId, onQrImage) {
   let photoCount = 0;
 
   while (Date.now() - start < timeout) {
+    if (cancelledLogins.has(userId) || !isPageOpen(page)) {
+      const err = new Error('LOGIN_CANCELLED');
+      err.code = 'LOGIN_CANCELLED';
+      throw err;
+    }
+
     if (await isLoggedIn(page)) {
       await browserManager.saveStorageState(accountId);
       await accountsRepo.setLoggedIn(accountId, true);
@@ -420,13 +453,22 @@ async function completeQrLogin(userId, onQrImage) {
     }
 
     if (photoCount === 0 || Date.now() - lastSent >= refreshMs) {
-      const buffer = await screenshotQrCode(page);
-      photoCount += 1;
-      if (onQrImage) await onQrImage(buffer, photoCount);
-      lastSent = Date.now();
+      try {
+        const buffer = await screenshotQrCode(page);
+        photoCount += 1;
+        if (onQrImage) await onQrImage(buffer, photoCount);
+        lastSent = Date.now();
+      } catch (err) {
+        if (cancelledLogins.has(userId) || !isPageOpen(page)) {
+          const cancelErr = new Error('LOGIN_CANCELLED');
+          cancelErr.code = 'LOGIN_CANCELLED';
+          throw cancelErr;
+        }
+        throw err;
+      }
     }
 
-    await page.waitForTimeout(2000);
+    await pause(page, 2000, userId);
   }
 
   throw new Error('Время входа по QR истекло — отсканируйте код быстрее или начните заново: /login');
@@ -454,7 +496,7 @@ async function ensureSession(accountId) {
   const page = await browserManager.newPage(accountIdResolved);
 
   await page.goto(config.tiktok.messagesUrl, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(3000);
+  await pause(page,3000);
 
   if (!(await isLoggedIn(page))) {
     await accountsRepo.setLoggedIn(accountIdResolved, false);
@@ -482,4 +524,5 @@ module.exports = {
   loginPhoneComplete,
   cancelLogin,
   ensureSession,
+  formatBrowserError,
 };

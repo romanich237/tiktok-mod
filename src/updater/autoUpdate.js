@@ -1,4 +1,4 @@
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { config, ROOT } = require('../config');
@@ -8,12 +8,65 @@ const logger = require('../logger');
 let intervalId = null;
 let updating = false;
 
+const DEFAULT_REPO = 'https://github.com/romanich237/tiktok-mod.git';
+
 function isGitRepo() {
   return fs.existsSync(path.join(ROOT, '.git'));
 }
 
 function runGit(cmd) {
-  return execSync(cmd, { cwd: ROOT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  try {
+    return execSync(cmd, {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: '/bin/bash',
+    }).trim();
+  } catch (err) {
+    const details = [err.stderr, err.stdout, err.message].filter(Boolean).join(' ').trim();
+    throw new Error(details || `git command failed: ${cmd}`);
+  }
+}
+
+function getUpdaterConfig() {
+  return {
+    enabled: config.updater?.enabled !== false,
+    branch: config.updater?.branch || 'main',
+    repository: config.updater?.repository || DEFAULT_REPO,
+    intervalMinutes: config.updater?.checkIntervalMinutes || 1,
+  };
+}
+
+function ensureGitRemote(repo, branch) {
+  try {
+    runGit('git remote get-url origin');
+  } catch {
+    runGit(`git remote add origin ${repo}`);
+  }
+
+  try {
+    const url = runGit('git remote get-url origin');
+    if (url !== repo && !url.includes('romanich237/tiktok-mod')) {
+      runGit(`git remote set-url origin ${repo}`);
+    }
+  } catch {
+    // ignore
+  }
+
+  runGit(`git fetch origin ${branch} --prune`);
+
+  try {
+    runGit(`git rev-parse --verify ${branch}`);
+  } catch {
+    runGit(`git checkout -b ${branch}`);
+  }
+
+  runGit(`git branch -M ${branch}`);
+  try {
+    runGit(`git branch --set-upstream-to=origin/${branch} ${branch}`);
+  } catch {
+    // branch may already track origin
+  }
 }
 
 function getLocalHash() {
@@ -24,21 +77,39 @@ function getRemoteHash(branch) {
   return runGit(`git rev-parse origin/${branch}`);
 }
 
-async function applyUpdate(branch) {
+function schedulePm2Restart() {
+  logger.info('Scheduling PM2 restart after update...');
+  const child = spawn(
+    'bash',
+    ['-c', 'sleep 2 && pm2 restart ecosystem.config.js --update-env && pm2 save'],
+    {
+      cwd: ROOT,
+      detached: true,
+      stdio: 'ignore',
+    }
+  );
+  child.unref();
+  setTimeout(() => process.exit(0), 1500);
+}
+
+async function applyUpdate(branch, repo) {
   if (updating) return;
   updating = true;
 
   try {
-    await notify('Вышла новую версия проекта, перезапускаю сервер');
+    await notify('Вышла новая версия проекта, перезапускаю сервер');
 
-    logger.info('Pulling updates from GitHub...');
-    runGit(`git pull origin ${branch}`);
+    ensureGitRemote(repo, branch);
+
+    logger.info(`Updating: origin/${branch}`);
+    runGit(`git fetch origin ${branch}`);
+    runGit(`git reset --hard origin/${branch}`);
 
     logger.info('Installing dependencies...');
-    execSync('npm install', { cwd: ROOT, stdio: 'inherit' });
+    execSync('npm install', { cwd: ROOT, stdio: 'inherit', shell: '/bin/bash' });
 
-    logger.info('Restarting application...');
-    execSync('pm2 restart ecosystem.config.js', { cwd: ROOT, stdio: 'inherit' });
+    logger.info('Update applied, restarting PM2...');
+    schedulePm2Restart();
   } catch (err) {
     logger.error('Auto-update failed', err);
     await notify(`❌ Ошибка обновления: ${err.message}`);
@@ -47,50 +118,46 @@ async function applyUpdate(branch) {
 }
 
 async function checkForUpdates() {
-  if (!config.updater?.enabled || updating) return;
-  if (!isGitRepo()) return;
+  const { enabled, branch, repository } = getUpdaterConfig();
+  if (!enabled || updating) return;
 
-  const branch = config.updater.branch || 'main';
-  const repo = config.updater.repository;
+  if (!isGitRepo()) {
+    logger.warn('Auto-updater: .git not found — run install.sh or git clone');
+    return;
+  }
 
   try {
-    if (repo) {
-      try {
-        runGit(`git remote get-url origin`);
-      } catch {
-        runGit(`git remote add origin ${repo}`);
-      }
-    }
-
-    runGit('git fetch origin --quiet');
+    ensureGitRemote(repository, branch);
 
     const local = getLocalHash();
     const remote = getRemoteHash(branch);
 
     if (local !== remote) {
       logger.info(`Update available: ${local.slice(0, 7)} -> ${remote.slice(0, 7)}`);
-      await applyUpdate(branch);
+      await applyUpdate(branch, repository);
     }
   } catch (err) {
-    logger.error('Update check failed', err);
+    logger.error(`Update check failed: ${err.message}`);
   }
 }
 
 function initAutoUpdater() {
-  if (!config.updater?.enabled) {
+  const { enabled, branch, repository, intervalMinutes } = getUpdaterConfig();
+
+  if (!enabled) {
     logger.info('Auto-updater disabled');
     return;
   }
 
   if (!isGitRepo()) {
-    logger.warn('Auto-updater: not a git repository, skipping');
+    logger.warn('Auto-updater: not a git repository — updates from GitHub will not work');
     return;
   }
 
-  const minutes = config.updater.checkIntervalMinutes || 1;
-  const ms = minutes * 60 * 1000;
-
-  logger.info(`Auto-updater enabled (every ${minutes} min, branch: ${config.updater.branch || 'main'})`);
+  const ms = intervalMinutes * 60 * 1000;
+  logger.info(
+    `Auto-updater enabled (every ${intervalMinutes} min, ${repository}, branch: ${branch})`
+  );
 
   checkForUpdates().catch((err) => logger.error('Initial update check failed', err));
   intervalId = setInterval(() => {
@@ -102,4 +169,4 @@ function stopAutoUpdater() {
   if (intervalId) clearInterval(intervalId);
 }
 
-module.exports = { initAutoUpdater, stopAutoUpdater, checkForUpdates };
+module.exports = { initAutoUpdater, stopAutoUpdater, checkForUpdates, ensureGitRemote };

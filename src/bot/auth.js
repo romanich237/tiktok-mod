@@ -1,6 +1,11 @@
+const { Markup } = require('telegraf');
 const { config } = require('../config');
 const accountsRepo = require('../db/repositories/accounts');
 const browserManager = require('../automation/browser');
+
+function authKeyboard() {
+  return Markup.inlineKeyboard([[Markup.button.callback('🔐 Авторизация', 'start_auth')]]);
+}
 
 function isAccountAuthorized() {
   const accountId = config.tiktok?.accountId || 'default';
@@ -8,4 +13,4 @@ function isAccountAuthorized() {
   return Boolean(account?.is_logged_in) || browserManager.storageExists(accountId);
 }
 
-module.exports = { isAccountAuthorized };
+module.exports = { isAccountAuthorized, authKeyboard };

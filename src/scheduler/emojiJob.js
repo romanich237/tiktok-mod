@@ -1,4 +1,5 @@
 const { config } = require('../config');
+const { isAccountAuthorized } = require('../bot/auth');
 const loginAutomation = require('../automation/login');
 const emojiSender = require('../automation/emojiSender');
 const browserManager = require('../automation/browser');
@@ -45,6 +46,11 @@ async function runEmojiJob({ force = false } = {}) {
   if (jobRunning) {
     logger.warn('Emoji job already running, skipping');
     return { skipped: true };
+  }
+
+  if (!isAccountAuthorized()) {
+    logger.info('Emoji job skipped: TikTok not authorized');
+    return { skipped: true, reason: 'not_authorized' };
   }
 
   if (!force && !config.scheduler?.enabled) {
@@ -115,6 +121,11 @@ async function runEmojiJob({ force = false } = {}) {
 }
 
 async function initScheduler() {
+  if (!isAccountAuthorized()) {
+    logger.info('Scheduler disabled until TikTok login');
+    return;
+  }
+
   const accountId = config.tiktok.accountId;
   const state = await schedulerRepo.getSchedulerState(accountId);
 

@@ -1,7 +1,9 @@
 const { Markup } = require('telegraf');
 const loginAutomation = require('../../automation/login');
+const { formatBrowserError } = require('../../automation/pageUtils');
 const loginSession = require('../loginSession');
 const { mainMenuKeyboard } = require('../keyboards/inline');
+const { isAccountAuthorized, authKeyboard } = require('../auth');
 const logger = require('../../logger');
 
 let loginInProgress = false;
@@ -71,7 +73,7 @@ function registerLogin(bot) {
       }
     } catch (err) {
       logger.error('Login step failed', err);
-      await ctx.reply(`❌ ${err.message}`);
+      await ctx.reply(`❌ ${formatBrowserError(err)}`);
       await cleanupLogin(ctx.from.id);
     }
   });
@@ -123,7 +125,12 @@ function registerLogin(bot) {
     } catch (err) {
       logger.error('QR login failed', err);
       await cleanupLogin(userId);
-      await ctx.reply(`❌ ${err.message}`);
+      const message = formatBrowserError(err);
+      if (!isAccountAuthorized()) {
+        await ctx.reply(`❌ ${message}`, authKeyboard());
+      } else {
+        await ctx.reply(`❌ ${message}`);
+      }
     }
   }
 
@@ -189,7 +196,11 @@ function registerLogin(bot) {
   async function cancelLogin(ctx) {
     const userId = ctx.from?.id;
     if (userId) await cleanupLogin(userId);
-    await ctx.reply('Вход отменён.');
+    if (!isAccountAuthorized()) {
+      await ctx.reply('Вход отменён.', authKeyboard());
+    } else {
+      await ctx.reply('Вход отменён.');
+    }
   }
 
   async function cleanupLogin(userId) {
