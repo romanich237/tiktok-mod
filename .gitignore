@@ -1,4 +1,5 @@
 node_modules/
+sql
 config.json
 sessions/*
 !sessions/.gitkeep
