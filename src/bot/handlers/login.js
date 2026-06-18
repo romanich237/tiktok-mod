@@ -24,11 +24,7 @@ function registerLogin(bot) {
 
   bot.action('start_auth', async (ctx) => {
     await ctx.answerCbQuery();
-    if (isAccountAuthorized()) {
-      await ctx.reply('✅ TikTok уже авторизован.', mainMenuKeyboard());
-      return;
-    }
-    await beginQrLogin(ctx);
+    await startLogin(ctx);
   });
 
   bot.action('login_method:qr', async (ctx) => {
