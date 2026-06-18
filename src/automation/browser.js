@@ -83,7 +83,7 @@ async function createContext(accountId, options = {}) {
   const browser = options.browser || browserInstance || (await launchBrowser({ ...options, accountId: accountIdResolved }));
   const statePath = getStorageStatePath(accountIdResolved);
   const contextOptions = {
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1400, height: 900 },
     userAgent:
       'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     locale: 'ru-RU',

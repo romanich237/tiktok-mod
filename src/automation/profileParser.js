@@ -1,8 +1,14 @@
 const { safeWait, dismissCookieBanner } = require('./pageUtils');
+const { SEL, readNavProfile } = require('./dmDom');
 const accountsRepo = require('../db/repositories/accounts');
 const logger = require('../logger');
 
 async function readProfileFromDom(page) {
+  const navProfile = await readNavProfile(page);
+  if (navProfile?.username) {
+    return navProfile;
+  }
+
   return page.evaluate(() => {
     const title = document.querySelector('[data-e2e="user-title"]')?.textContent?.trim();
     let subtitle = document.querySelector('[data-e2e="user-subtitle"]')?.textContent?.trim();
@@ -15,24 +21,9 @@ async function readProfileFromDom(page) {
       };
     }
 
-    const profileLinkSelectors = [
-      'a[href*="/@"][data-e2e="profile-icon"]',
-      '[data-e2e="nav-profile"] a[href*="/@"]',
-      'a[href*="/@"][aria-label*="Profile"]',
-      'a[href*="/@"][aria-label*="Профиль"]',
-    ];
-
-    for (const selector of profileLinkSelectors) {
-      const href = document.querySelector(selector)?.getAttribute('href') || '';
-      const match = href.match(/@([^/?#]+)/);
-      if (match) return { username: match[1], displayName: null };
-    }
-
-    const ownLink = Array.from(document.querySelectorAll('a[href*="/@"]')).find((link) => {
-      const href = link.getAttribute('href') || '';
-      return /^\/@[^/]+\/?$/.test(href);
-    });
-    const match = ownLink?.getAttribute('href')?.match(/@([^/?#]+)/);
+    const profileLink = document.querySelector('a[data-e2e="nav-profile"][href*="/@"]');
+    const href = profileLink?.getAttribute('href') || '';
+    const match = href.match(/@([^/?#]+)/);
     return match ? { username: match[1], displayName: null } : null;
   });
 }
@@ -47,7 +38,7 @@ async function openProfilePage(page) {
 
   await page.goto(profileUrl, { waitUntil: 'domcontentloaded' });
   await dismissCookieBanner(page);
-  await safeWait(page, 2500);
+  await safeWait(page, 2000);
 
   profile = await readProfileFromDom(page);
   const urlMatch = page.url().match(/@([^/?#]+)/);
@@ -56,7 +47,7 @@ async function openProfilePage(page) {
   }
 
   if (profile?.username && !profile?.displayName) {
-    await safeWait(page, 1000);
+    await safeWait(page, 800);
     const refreshed = await readProfileFromDom(page);
     if (refreshed?.displayName) {
       profile.displayName = refreshed.displayName;
@@ -88,10 +79,10 @@ async function syncAccountProfile(page, accountId, options = {}) {
   if (returnToMessages && returnUrl.includes('/messages') && !page.url().includes('/messages')) {
     await page.goto('https://www.tiktok.com/messages', { waitUntil: 'domcontentloaded' });
     await dismissCookieBanner(page);
-    await safeWait(page, 2000);
+    await safeWait(page, 1500);
   }
 
   return profile;
 }
 
-module.exports = { parseProfile, syncAccountProfile, readProfileFromDom };
+module.exports = { parseProfile, syncAccountProfile, readProfileFromDom, SEL };
