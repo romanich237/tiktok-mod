@@ -1,0 +1,16 @@
+[Unit]
+Description=TikTok Mod Telegram Bot
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=tiktok
+WorkingDirectory=/opt/tiktok-mod
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

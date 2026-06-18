@@ -1,0 +1,46 @@
+{
+  "telegram": {
+    "botToken": "your_bot_token_here",
+    "allowedUserIds": [123456789]
+  },
+  "mysql": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "tiktok",
+    "password": "tiktokpass",
+    "database": "tiktok_mod"
+  },
+  "updater": {
+    "enabled": true,
+    "checkIntervalMinutes": 1,
+    "repository": "https://github.com/romanich237/tiktok-mod.git",
+    "branch": "main"
+  },
+  "tiktok": {
+    "accountId": "default",
+    "messagesUrl": "https://www.tiktok.com/messages",
+    "loginUrl": "https://www.tiktok.com/login"
+  },
+  "scheduler": {
+    "minHours": 6,
+    "maxHours": 12,
+    "enabled": true,
+    "dailyStreakReportHour": 9
+  },
+  "emoji": {
+    "pool": ["🔥", "❤️", "😊", "👍", "✨", "💯"]
+  },
+  "notifications": {
+    "onSend": true,
+    "onError": true,
+    "dailyStreakReport": true
+  },
+  "automation": {
+    "headless": true,
+    "loginHeadless": false,
+    "chatDelayMinMs": 3000,
+    "chatDelayMaxMs": 8000,
+    "loginTimeoutMs": 300000,
+    "qrRefreshMs": 30000
+  }
+}

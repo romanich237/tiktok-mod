@@ -1,0 +1,441 @@
+const { config } = require('../config');
+const accountsRepo = require('../db/repositories/accounts');
+const browserManager = require('./browser');
+const selectors = require('./selectors');
+const logger = require('../logger');
+
+const activePages = new Map();
+
+async function isLoggedIn(page) {
+  const url = page.url();
+  if (url.includes('/login')) return false;
+
+  for (const selector of selectors.loginPageIndicators) {
+    try {
+      const visible = await page.locator(selector).first().isVisible({ timeout: 1500 });
+      if (visible) return false;
+    } catch {
+      // continue
+    }
+  }
+
+  for (const selector of selectors.loggedInIndicators) {
+    try {
+      const visible = await page.locator(selector).first().isVisible({ timeout: 2000 });
+      if (visible) return true;
+    } catch {
+      // continue
+    }
+  }
+
+  return !url.includes('/login') && (url.includes('/messages') || url.includes('/@'));
+}
+
+async function clickPhoneEmailChannel(page) {
+  const items = page.locator('[data-e2e="channel-item"]');
+  const count = await items.count();
+
+  for (let i = 0; i < count; i++) {
+    const item = items.nth(i);
+    const text = ((await item.innerText().catch(() => '')) || '').toLowerCase();
+    if (
+      text.includes('phone') ||
+      text.includes('email') ||
+      text.includes('username') ||
+      text.includes('телефон') ||
+      text.includes('почт') ||
+      text.includes('логин')
+    ) {
+      await item.click();
+      await page.waitForTimeout(2000);
+      return true;
+    }
+  }
+
+  const channel = await selectors.findFirst(page, selectors.login.phoneEmailChannel, {
+    visible: true,
+    timeout: 10000,
+  });
+  if (channel) {
+    await channel.click();
+    await page.waitForTimeout(2000);
+    return true;
+  }
+
+  return false;
+}
+
+async function clickQrChannel(page) {
+  const items = page.locator('[data-e2e="channel-item"]');
+  const count = await items.count();
+
+  for (let i = 0; i < count; i++) {
+    const item = items.nth(i);
+    const text = ((await item.innerText().catch(() => '')) || '').toLowerCase();
+    if (text.includes('qr') || text.includes('код')) {
+      await item.click();
+      await page.waitForTimeout(2000);
+      return true;
+    }
+  }
+
+  const qrChannel = await selectors.findFirst(page, selectors.login.qrChannel, {
+    visible: true,
+    timeout: 10000,
+  });
+  if (qrChannel) {
+    await qrChannel.click();
+    await page.waitForTimeout(2000);
+    return true;
+  }
+
+  return false;
+}
+
+async function openLoginStart(page) {
+  const loginUrl = config.tiktok.loginUrl || 'https://www.tiktok.com/login';
+  logger.info(`Opening login page: ${loginUrl}`);
+  await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-e2e="login-title"]', { timeout: 20000 }).catch(() => {});
+  await clickPhoneEmailChannel(page);
+  return page;
+}
+
+async function openQrLoginForm(page) {
+  const loginUrl = config.tiktok.loginUrl || 'https://www.tiktok.com/login';
+  logger.info(`Opening QR login: ${loginUrl}`);
+  await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-e2e="login-title"]', { timeout: 20000 }).catch(() => {});
+
+  const opened = await clickQrChannel(page);
+  if (!opened) {
+    await page.goto(selectors.login.qrLoginUrl, { waitUntil: 'domcontentloaded' });
+  }
+
+  await page.waitForSelector('[data-e2e="qr-code"]', { timeout: 20000 });
+  logger.info('QR-код загружен');
+  return page;
+}
+
+async function screenshotQrCode(page) {
+  const qr = page.locator('[data-e2e="qr-code"]');
+  await qr.waitFor({ state: 'visible', timeout: 10000 });
+  return qr.screenshot({ type: 'png' });
+}
+
+async function openEmailLoginForm(page) {
+  await openLoginStart(page);
+
+  if (!page.url().includes('/email')) {
+    const emailLink = await selectors.findFirst(page, selectors.login.emailOrUsernameLink, {
+      visible: true,
+      timeout: 5000,
+    });
+    if (emailLink) {
+      await emailLink.click();
+      await page.waitForTimeout(2000);
+    } else {
+      await page.goto(selectors.login.emailLoginUrl, { waitUntil: 'domcontentloaded' });
+    }
+  }
+
+  const usernameInput = await selectors.findFirst(page, selectors.login.usernameInput, {
+    visible: true,
+    timeout: 15000,
+  });
+
+  if (!usernameInput) {
+    throw new Error('Форма входа (email/username) не найдена');
+  }
+
+  logger.info('Форма email/username открыта');
+  return page;
+}
+
+async function openPhoneLoginForm(page) {
+  await openLoginStart(page);
+
+  if (!page.url().includes('/phone')) {
+    const phoneLink = await selectors.findFirst(page, selectors.login.phoneLink, {
+      visible: true,
+      timeout: 5000,
+    });
+    if (phoneLink) {
+      await phoneLink.click();
+      await page.waitForTimeout(2000);
+    } else {
+      await page.goto(selectors.login.phoneLoginUrl, { waitUntil: 'domcontentloaded' });
+    }
+  }
+
+  const phoneInput = await selectors.findFirst(page, selectors.login.phoneInput, {
+    visible: true,
+    timeout: 15000,
+  });
+
+  if (!phoneInput) {
+    throw new Error('Форма входа по телефону не найдена');
+  }
+
+  logger.info('Форма входа по телефону открыта');
+  return page;
+}
+
+async function submitCredentials(page, username, password) {
+  const usernameInput = await selectors.findFirst(page, selectors.login.usernameInput, {
+    visible: true,
+    timeout: 10000,
+  });
+  const passwordInput = await selectors.findFirst(page, selectors.login.passwordInput, {
+    visible: true,
+    timeout: 10000,
+  });
+
+  if (!usernameInput || !passwordInput) {
+    throw new Error('Поля логина или пароля не найдены');
+  }
+
+  await usernameInput.fill(username);
+  await page.waitForTimeout(500);
+  await passwordInput.fill(password);
+  await page.waitForTimeout(500);
+
+  const submitBtn = await selectors.findFirst(page, selectors.login.submitButton, {
+    visible: true,
+    timeout: 5000,
+  });
+
+  if (submitBtn) {
+    await submitBtn.click();
+  } else {
+    await page.keyboard.press('Enter');
+  }
+
+  logger.info('Email/username отправлен');
+  await page.waitForTimeout(3000);
+}
+
+async function submitPhoneNumber(page, phone) {
+  const phoneInput = await selectors.findFirst(page, selectors.login.phoneInput, {
+    visible: true,
+    timeout: 10000,
+  });
+
+  if (!phoneInput) {
+    throw new Error('Поле номера телефона не найдено');
+  }
+
+  const normalized = phone.replace(/\s+/g, '').replace(/^\+/, '');
+  await phoneInput.fill(normalized);
+  await page.waitForTimeout(800);
+
+  const sendBtn = await selectors.findFirst(page, selectors.login.sendCodeButton, {
+    visible: true,
+    timeout: 5000,
+  });
+
+  if (!sendBtn) {
+    throw new Error('Кнопка «Send code» не найдена');
+  }
+
+  await sendBtn.click();
+  logger.info(`SMS-код запрошен для ${normalized}`);
+  await page.waitForTimeout(2000);
+}
+
+async function submitPhoneCode(page, code) {
+  const codeInput = await selectors.findFirst(page, selectors.login.smsCodeInput, {
+    visible: true,
+    timeout: 10000,
+  });
+
+  if (!codeInput) {
+    throw new Error('Поле SMS-кода не найдено');
+  }
+
+  await codeInput.fill(code.replace(/\s+/g, ''));
+  await page.waitForTimeout(500);
+
+  const submitBtn = await selectors.findFirst(page, selectors.login.submitButton, {
+    visible: true,
+    timeout: 5000,
+  });
+
+  if (submitBtn) {
+    await submitBtn.click();
+  } else {
+    await page.keyboard.press('Enter');
+  }
+
+  logger.info('SMS-код отправлен');
+  await page.waitForTimeout(3000);
+}
+
+async function waitForLoginComplete(page, accountId) {
+  const timeout = config.automation?.loginTimeoutMs || 300000;
+  const start = Date.now();
+
+  while (Date.now() - start < timeout) {
+    if (await isLoggedIn(page)) {
+      await browserManager.saveStorageState(accountId);
+      await accountsRepo.setLoggedIn(accountId, true);
+      return true;
+    }
+    await page.waitForTimeout(3000);
+  }
+
+  throw new Error('Время входа истекло (капча, неверный код или 2FA)');
+}
+
+async function prepareBrowser(accountId) {
+  const accountIdResolved = accountId || config.tiktok.accountId;
+  const useHeadless = config.automation?.loginHeadless ?? false;
+
+  await accountsRepo.ensureAccount(accountIdResolved);
+  await browserManager.launchBrowser({ headless: useHeadless });
+  await browserManager.createContext(accountIdResolved);
+  const page = await browserManager.newPage(accountIdResolved);
+
+  return { page, accountId: accountIdResolved };
+}
+
+async function finalizeLogin(page, accountId, userId) {
+  await waitForLoginComplete(page, accountId);
+  await page.close();
+  activePages.delete(userId);
+  await browserManager.closeBrowser();
+  return { success: true, accountId };
+}
+
+async function cancelLogin(userId) {
+  const page = activePages.get(userId);
+  if (page) {
+    await page.close().catch(() => {});
+    activePages.delete(userId);
+  }
+  await browserManager.closeBrowser();
+}
+
+async function startEmailLogin(userId) {
+  const { page, accountId } = await prepareBrowser();
+  activePages.set(userId, page);
+  await openEmailLoginForm(page);
+  return { page, accountId };
+}
+
+async function startPhoneLogin(userId) {
+  const { page, accountId } = await prepareBrowser();
+  activePages.set(userId, page);
+  await openPhoneLoginForm(page);
+  return { page, accountId };
+}
+
+async function loginEmailComplete(userId, username, password) {
+  const page = activePages.get(userId);
+  if (!page) throw new Error('Сессия входа не найдена. Начните заново: /login');
+
+  const accountId = config.tiktok.accountId;
+  await submitCredentials(page, username, password);
+  return finalizeLogin(page, accountId, userId);
+}
+
+async function loginPhoneSendCode(userId, phone) {
+  const page = activePages.get(userId);
+  if (!page) throw new Error('Сессия входа не найдена. Начните заново: /login');
+
+  await submitPhoneNumber(page, phone);
+  return { waitingCode: true };
+}
+
+async function startQrLogin(userId) {
+  const { page, accountId } = await prepareBrowser();
+  activePages.set(userId, page);
+  await openQrLoginForm(page);
+  return { page, accountId };
+}
+
+async function completeQrLogin(userId, onQrImage) {
+  const page = activePages.get(userId);
+  if (!page) throw new Error('Сессия входа не найдена. Начните заново: /login');
+
+  const accountId = config.tiktok.accountId;
+  const timeout = config.automation?.loginTimeoutMs || 300000;
+  const refreshMs = config.automation?.qrRefreshMs || 30000;
+  const start = Date.now();
+  let lastSent = 0;
+  let photoCount = 0;
+
+  while (Date.now() - start < timeout) {
+    if (await isLoggedIn(page)) {
+      await browserManager.saveStorageState(accountId);
+      await accountsRepo.setLoggedIn(accountId, true);
+      await page.close();
+      activePages.delete(userId);
+      await browserManager.closeBrowser();
+      return { success: true, accountId, photoCount };
+    }
+
+    if (photoCount === 0 || Date.now() - lastSent >= refreshMs) {
+      const buffer = await screenshotQrCode(page);
+      photoCount += 1;
+      if (onQrImage) await onQrImage(buffer, photoCount);
+      lastSent = Date.now();
+    }
+
+    await page.waitForTimeout(2000);
+  }
+
+  throw new Error('Время входа по QR истекло — отсканируйте код быстрее или начните заново: /login');
+}
+
+async function loginPhoneComplete(userId, code) {
+  const page = activePages.get(userId);
+  if (!page) throw new Error('Сессия входа не найдена. Начните заново: /login');
+
+  const accountId = config.tiktok.accountId;
+  await submitPhoneCode(page, code);
+  return finalizeLogin(page, accountId, userId);
+}
+
+async function ensureSession(accountId) {
+  const accountIdResolved = accountId || config.tiktok.accountId;
+  const account = await accountsRepo.getAccount(accountIdResolved);
+
+  if (!account?.is_logged_in && !browserManager.storageExists(accountIdResolved)) {
+    throw new Error('SESSION_EXPIRED');
+  }
+
+  await browserManager.launchBrowser({ headless: config.automation?.headless ?? true });
+  await browserManager.createContext(accountIdResolved);
+  const page = await browserManager.newPage(accountIdResolved);
+
+  await page.goto(config.tiktok.messagesUrl, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(3000);
+
+  if (!(await isLoggedIn(page))) {
+    await accountsRepo.setLoggedIn(accountIdResolved, false);
+    throw new Error('SESSION_EXPIRED');
+  }
+
+  return page;
+}
+
+module.exports = {
+  isLoggedIn,
+  openEmailLoginForm,
+  openPhoneLoginForm,
+  submitCredentials,
+  submitPhoneNumber,
+  submitPhoneCode,
+  openQrLoginForm,
+  screenshotQrCode,
+  startQrLogin,
+  completeQrLogin,
+  startEmailLogin,
+  startPhoneLogin,
+  loginEmailComplete,
+  loginPhoneSendCode,
+  loginPhoneComplete,
+  cancelLogin,
+  ensureSession,
+};
