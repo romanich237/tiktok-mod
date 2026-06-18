@@ -38,6 +38,31 @@ async function openChatByUsername(page, username, displayName) {
   const normalized = normalize(username);
   const display = (displayName || username || '').trim();
 
+  const nicks = page.locator('[data-e2e="dm-new-conversation-nickname"]');
+  const nickCount = await nicks.count();
+
+  for (let i = 0; i < nickCount; i++) {
+    const nick = nicks.nth(i);
+    const text = ((await nick.textContent()) || '').trim();
+    const textNorm = normalize(text);
+
+    if (
+      text === display ||
+      textNorm === normalized ||
+      textNorm === normalize(display) ||
+      (display && text.includes(display))
+    ) {
+      const item = nick.locator('xpath=ancestor::*[@data-e2e="dm-new-conversation-item"][1]');
+      if (await item.count()) {
+        await item.click();
+      } else {
+        await nick.click();
+      }
+      await safeWait(page, 2000);
+      return true;
+    }
+  }
+
   const chatLink = page.locator(`a[href*="@${normalized}"]`).first();
   if (await chatLink.count()) {
     await chatLink.click();

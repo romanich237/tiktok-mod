@@ -96,12 +96,16 @@ module.exports = {
   messages: {
     chatList: [
       '[data-e2e="dm-new-conversation-list"]',
+      '[class*="ConversationListContainer"]',
+      '[class*="DivListContent"]',
       '[data-e2e="chat-list"]',
       '[class*="ConversationList"]',
       'div[role="list"]',
     ],
     chatItem: [
       '[data-e2e="dm-new-conversation-item"]',
+      '[class*="DivItemWrapper"]',
+      '[id^="more-action-icon"]',
       '[data-e2e="conversation-item"]',
       '[data-e2e="chat-list-item"]',
       '[class*="conversationConversationItem"]',
@@ -109,8 +113,8 @@ module.exports = {
     ],
     chatNickname: [
       '[data-e2e="dm-new-conversation-nickname"]',
-      '[data-e2e="chat-username"]',
       '[class*="PInfoNickname"]',
+      '[data-e2e="chat-username"]',
       'p[class*="Nickname"]',
     ],
     chatAvatar: [
