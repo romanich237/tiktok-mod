@@ -2,7 +2,7 @@ const { config } = require('../config');
 const accountsRepo = require('../db/repositories/accounts');
 const browserManager = require('./browser');
 const selectors = require('./selectors');
-const { safeWait, isPageOpen, formatBrowserError } = require('./pageUtils');
+const { safeWait, isPageOpen, formatBrowserError, dismissCookieBanner, safeClick } = require('./pageUtils');
 const logger = require('../logger');
 
 const activePages = new Map();
@@ -54,6 +54,7 @@ async function probeMessagesSession(page, userId) {
   const returnUrl = page.url();
   try {
     await page.goto(config.tiktok.messagesUrl, { waitUntil: 'domcontentloaded' });
+    await dismissCookieBanner(page);
     await pause(page, 2500, userId);
     const loggedIn = await isLoggedIn(page);
     if (!loggedIn && returnUrl.includes('/login')) {
@@ -66,80 +67,15 @@ async function probeMessagesSession(page, userId) {
   }
 }
 
-async function clickPhoneEmailChannel(page) {
-  const items = page.locator('[data-e2e="channel-item"]');
-  const count = await items.count();
-
-  for (let i = 0; i < count; i++) {
-    const item = items.nth(i);
-    const text = ((await item.innerText().catch(() => '')) || '').toLowerCase();
-    if (
-      text.includes('phone') ||
-      text.includes('email') ||
-      text.includes('username') ||
-      text.includes('телефон') ||
-      text.includes('почт') ||
-      text.includes('логин')
-    ) {
-      await item.click();
-      await pause(page,2000);
-      return true;
-    }
-  }
-
-  const channel = await selectors.findFirst(page, selectors.login.phoneEmailChannel, {
-    visible: true,
-    timeout: 10000,
-  });
-  if (channel) {
-    await channel.click();
-    await pause(page,2000);
-    return true;
-  }
-
-  return false;
-}
-
-async function clickQrChannel(page) {
-  const items = page.locator('[data-e2e="channel-item"]');
-  const count = await items.count();
-
-  for (let i = 0; i < count; i++) {
-    const item = items.nth(i);
-    const text = ((await item.innerText().catch(() => '')) || '').toLowerCase();
-    if (text.includes('qr') || text.includes('код')) {
-      await item.click();
-      await pause(page,2000);
-      return true;
-    }
-  }
-
-  const qrChannel = await selectors.findFirst(page, selectors.login.qrChannel, {
-    visible: true,
-    timeout: 10000,
-  });
-  if (qrChannel) {
-    await qrChannel.click();
-    await pause(page,2000);
-    return true;
-  }
-
-  return false;
-}
-
-async function openLoginStart(page) {
-  const loginUrl = config.tiktok.loginUrl || 'https://www.tiktok.com/login';
-  logger.info(`Opening login page: ${loginUrl}`);
-  await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('[data-e2e="login-title"]', { timeout: 20000 }).catch(() => {});
-  await clickPhoneEmailChannel(page);
-  return page;
+async function gotoLoginPage(page, url) {
+  logger.info(`Opening login page: ${url}`);
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await dismissCookieBanner(page);
+  await pause(page, 800);
 }
 
 async function openQrLoginForm(page) {
-  const loginUrl = selectors.login.qrLoginUrl;
-  logger.info(`Opening QR login: ${loginUrl}`);
-  await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
+  await gotoLoginPage(page, selectors.login.qrLoginUrl);
   await page.waitForSelector('[data-e2e="qr-code"]', { timeout: 20000 });
   await waitForQrCanvasReady(page);
   logger.info('QR-код загружен');
@@ -209,20 +145,7 @@ async function screenshotQrCode(page) {
 }
 
 async function openEmailLoginForm(page) {
-  await openLoginStart(page);
-
-  if (!page.url().includes('/email')) {
-    const emailLink = await selectors.findFirst(page, selectors.login.emailOrUsernameLink, {
-      visible: true,
-      timeout: 5000,
-    });
-    if (emailLink) {
-      await emailLink.click();
-      await pause(page,2000);
-    } else {
-      await page.goto(selectors.login.emailLoginUrl, { waitUntil: 'domcontentloaded' });
-    }
-  }
+  await gotoLoginPage(page, selectors.login.emailLoginUrl);
 
   const usernameInput = await selectors.findFirst(page, selectors.login.usernameInput, {
     visible: true,
@@ -238,20 +161,7 @@ async function openEmailLoginForm(page) {
 }
 
 async function openPhoneLoginForm(page) {
-  await openLoginStart(page);
-
-  if (!page.url().includes('/phone')) {
-    const phoneLink = await selectors.findFirst(page, selectors.login.phoneLink, {
-      visible: true,
-      timeout: 5000,
-    });
-    if (phoneLink) {
-      await phoneLink.click();
-      await pause(page,2000);
-    } else {
-      await page.goto(selectors.login.phoneLoginUrl, { waitUntil: 'domcontentloaded' });
-    }
-  }
+  await gotoLoginPage(page, selectors.login.phoneLoginUrl);
 
   const phoneInput = await selectors.findFirst(page, selectors.login.phoneInput, {
     visible: true,
@@ -291,13 +201,13 @@ async function submitCredentials(page, username, password) {
   });
 
   if (submitBtn) {
-    await submitBtn.click();
+    await safeClick(page, submitBtn);
   } else {
     await page.keyboard.press('Enter');
   }
 
   logger.info('Email/username отправлен');
-  await pause(page,3000);
+  await pause(page, 3000);
 }
 
 async function submitPhoneNumber(page, phone) {
@@ -323,9 +233,9 @@ async function submitPhoneNumber(page, phone) {
     throw new Error('Кнопка «Send code» не найдена');
   }
 
-  await sendBtn.click();
+  await safeClick(page, sendBtn);
   logger.info(`SMS-код запрошен для ${normalized}`);
-  await pause(page,2000);
+  await pause(page, 2000);
 }
 
 async function submitPhoneCode(page, code) {
@@ -347,13 +257,13 @@ async function submitPhoneCode(page, code) {
   });
 
   if (submitBtn) {
-    await submitBtn.click();
+    await safeClick(page, submitBtn);
   } else {
     await page.keyboard.press('Enter');
   }
 
   logger.info('SMS-код отправлен');
-  await pause(page,3000);
+  await pause(page, 3000);
 }
 
 async function waitForLoginComplete(page, accountId, userId) {
@@ -532,7 +442,8 @@ async function ensureSession(accountId) {
   const page = await browserManager.newPage(accountIdResolved);
 
   await page.goto(config.tiktok.messagesUrl, { waitUntil: 'domcontentloaded' });
-  await pause(page,3000);
+  await dismissCookieBanner(page);
+  await pause(page, 3000);
 
   if (!(await isLoggedIn(page))) {
     await accountsRepo.setLoggedIn(accountIdResolved, false);

@@ -195,28 +195,33 @@ function installSystemDependencies() {
 }
 
 function ensureGitRepo() {
-  const repo = 'https://github.com/romanich237/tiktok-mod.git';
-  const branch = 'main';
+  const {
+    bootstrapGitRepo,
+    DEFAULT_REPO,
+    DEFAULT_BRANCH,
+    hasGitCommand,
+    ensureOriginRemote,
+    fetchOrigin,
+  } = require('./src/updater/gitSetup');
+
+  const repo = DEFAULT_REPO;
+  const branch = DEFAULT_BRANCH;
   const gitDir = path.join(ROOT, '.git');
 
-  if (!commandExists('git')) {
+  if (!hasGitCommand()) {
     warn('git не установлен — автообновление с GitHub не будет работать');
     return;
   }
 
   if (!fs.existsSync(gitDir)) {
     log('Инициализация git для автообновления...');
-    run('git init');
-    run(`git remote add origin ${repo}`);
-    run(`git fetch origin ${branch}`);
-    run(`git checkout -B ${branch}`);
-    run(`git reset --hard origin/${branch}`);
+    bootstrapGitRepo(ROOT, repo, branch);
     ok('Git настроен');
     return;
   }
 
-  runOptional(`git remote get-url origin`) || run(`git remote add origin ${repo}`);
-  runOptional(`git fetch origin ${branch}`);
+  ensureOriginRemote(ROOT, repo);
+  fetchOrigin(ROOT, branch);
   runOptional(`git branch -M ${branch}`);
   runOptional(`git branch --set-upstream-to=origin/${branch} ${branch}`);
   ok('Git готов к автообновлению');
