@@ -16,28 +16,51 @@ async function isLoggedIn(page) {
   if (!isPageOpen(page)) return false;
 
   try {
-    const url = page.url();
-    if (url.includes('/login')) return false;
-
-    for (const selector of selectors.loginPageIndicators) {
-      try {
-        const visible = await page.locator(selector).first().isVisible({ timeout: 1500 });
-        if (visible) return false;
-      } catch {
-        // continue
-      }
-    }
-
     for (const selector of selectors.loggedInIndicators) {
       try {
-        const visible = await page.locator(selector).first().isVisible({ timeout: 2000 });
+        const visible = await page.locator(selector).first().isVisible({ timeout: 1500 });
         if (visible) return true;
       } catch {
         // continue
       }
     }
 
-    return !url.includes('/login') && (url.includes('/messages') || url.includes('/@'));
+    for (const selector of selectors.loginPageIndicators) {
+      try {
+        const visible = await page.locator(selector).first().isVisible({ timeout: 1000 });
+        if (visible) return false;
+      } catch {
+        // continue
+      }
+    }
+
+    const qrVisible = await page
+      .locator('[data-e2e="qr-code"]')
+      .first()
+      .isVisible({ timeout: 800 })
+      .catch(() => false);
+    if (qrVisible) return false;
+
+    const url = page.url();
+    if (url.includes('/messages') || url.includes('/@')) return true;
+
+    return !url.includes('/login');
+  } catch {
+    return false;
+  }
+}
+
+async function probeMessagesSession(page, userId) {
+  const returnUrl = page.url();
+  try {
+    await page.goto(config.tiktok.messagesUrl, { waitUntil: 'domcontentloaded' });
+    await pause(page, 2500, userId);
+    const loggedIn = await isLoggedIn(page);
+    if (!loggedIn && returnUrl.includes('/login')) {
+      await page.goto(returnUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await pause(page, 1000, userId);
+    }
+    return loggedIn;
   } catch {
     return false;
   }
@@ -421,8 +444,17 @@ async function loginPhoneSendCode(userId, phone) {
 async function startQrLogin(userId) {
   const { page, accountId } = await prepareBrowser();
   activePages.set(userId, page);
+
+  await page.goto(config.tiktok.messagesUrl, { waitUntil: 'domcontentloaded' });
+  await pause(page, 2500, userId);
+  if (await isLoggedIn(page)) {
+    await browserManager.saveStorageState(accountId);
+    await accountsRepo.setLoggedIn(accountId, true);
+    return { page, accountId, alreadyLoggedIn: true };
+  }
+
   await openQrLoginForm(page);
-  return { page, accountId };
+  return { page, accountId, alreadyLoggedIn: false };
 }
 
 async function completeQrLogin(userId, onQrImage) {
@@ -435,6 +467,7 @@ async function completeQrLogin(userId, onQrImage) {
   const start = Date.now();
   let lastSent = 0;
   let photoCount = 0;
+  let lastProbe = 0;
 
   while (Date.now() - start < timeout) {
     if (cancelledLogins.has(userId) || !isPageOpen(page)) {
@@ -450,6 +483,18 @@ async function completeQrLogin(userId, onQrImage) {
       activePages.delete(userId);
       await browserManager.closeBrowser();
       return { success: true, accountId, photoCount };
+    }
+
+    if (photoCount > 0 && Date.now() - lastProbe >= 6000) {
+      lastProbe = Date.now();
+      if (await probeMessagesSession(page, userId)) {
+        await browserManager.saveStorageState(accountId);
+        await accountsRepo.setLoggedIn(accountId, true);
+        await page.close();
+        activePages.delete(userId);
+        await browserManager.closeBrowser();
+        return { success: true, accountId, photoCount };
+      }
     }
 
     if (photoCount === 0 || Date.now() - lastSent >= refreshMs) {

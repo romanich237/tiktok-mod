@@ -24,6 +24,10 @@ function registerLogin(bot) {
 
   bot.action('start_auth', async (ctx) => {
     await ctx.answerCbQuery();
+    if (isAccountAuthorized()) {
+      await ctx.reply('✅ TikTok уже авторизован.', mainMenuKeyboard());
+      return;
+    }
     await beginQrLogin(ctx);
   });
 
@@ -79,6 +83,11 @@ function registerLogin(bot) {
   });
 
   async function startLogin(ctx) {
+    if (isAccountAuthorized()) {
+      await ctx.reply('✅ TikTok уже авторизован.', mainMenuKeyboard());
+      return;
+    }
+
     if (loginInProgress) {
       await ctx.reply('⏳ Вход уже выполняется. /login_cancel — отменить');
       return;
@@ -99,12 +108,23 @@ function registerLogin(bot) {
       return;
     }
 
+    if (isAccountAuthorized()) {
+      await ctx.reply('✅ TikTok уже авторизован.', mainMenuKeyboard());
+      return;
+    }
+
     loginInProgress = true;
     const userId = ctx.from.id;
     try {
       loginSession.update(userId, { step: 'qr_waiting', method: 'qr' });
       await ctx.reply('📷 Открываю страницу QR-кода...');
-      await loginAutomation.startQrLogin(userId);
+      const started = await loginAutomation.startQrLogin(userId);
+
+      if (started.alreadyLoggedIn) {
+        await cleanupLogin(userId);
+        await ctx.reply('✅ Сессия уже активна! Вход не требуется.', mainMenuKeyboard());
+        return;
+      }
 
       await loginAutomation.completeQrLogin(userId, async (buffer, number) => {
         await ctx.replyWithPhoto(

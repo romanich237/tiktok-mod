@@ -5,9 +5,12 @@
  */
 module.exports = {
   loggedInIndicators: [
-    '[data-e2e="profile-icon"]',
     '[data-e2e="nav-messages"]',
+    '[data-e2e="dm-new-conversation-list"]',
+    '[data-e2e="dm-new-chatbox"]',
+    '[data-e2e="profile-icon"]',
     'a[href*="/messages"]',
+    'a[href="/upload"]',
     '[data-e2e="tiktok-logo"]',
     'div[id="header-more-menu-icon"]',
   ],

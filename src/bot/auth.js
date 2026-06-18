@@ -9,8 +9,18 @@ function authKeyboard() {
 
 function isAccountAuthorized() {
   const accountId = config.tiktok?.accountId || 'default';
+  const hasStorage = browserManager.storageExists(accountId);
+
+  if (hasStorage) {
+    const account = accountsRepo.getAccount(accountId);
+    if (!account?.is_logged_in) {
+      accountsRepo.setLoggedIn(accountId, true);
+    }
+    return true;
+  }
+
   const account = accountsRepo.getAccount(accountId);
-  return Boolean(account?.is_logged_in) || browserManager.storageExists(accountId);
+  return Boolean(account?.is_logged_in);
 }
 
 module.exports = { isAccountAuthorized, authKeyboard };
