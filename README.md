@@ -109,10 +109,11 @@ nano config.json
 npm start
 ```
 
-Без дисплея (VPS):
+Или напрямую:
 
 ```bash
-xvfb-run npm start
+pm2 start ecosystem.config.js
+pm2 save
 ```
 
 ---
@@ -222,7 +223,7 @@ tiktok-mod/
 |----------|---------|
 | MySQL недоступен | `sudo systemctl status mysql` |
 | Браузер не запускается | `sudo npx playwright install-deps chromium` |
-| Нет дисплея для `/login` | `xvfb-run npm start` или скопируйте `sessions/` |
+| Нет дисплея для `/login` | PM2 уже использует xvfb-run; иначе скопируйте `sessions/` |
 | `SESSION_EXPIRED` | `/login` заново |
 | Access denied (MySQL) | Запустите `./install.sh` заново |
 

@@ -7,7 +7,7 @@ Wants=mysql.service
 Type=simple
 User=tiktok
 WorkingDirectory=/opt/tiktok-mod
-ExecStart=/usr/bin/node src/index.js
+ExecStart=/usr/bin/xvfb-run -a /usr/bin/node src/index.js
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
