@@ -54,7 +54,7 @@ async function refreshChats(ctx) {
     const parsed = await chatParser.parseAndReturn(page);
     await chatsRepo.upsertChats(accountId, parsed);
     await page.close();
-    await browserManager.closeBrowser();
+    await browserManager.closeBrowser({ saveSession: true, accountId });
 
     const chats = await chatsRepo.getChatsByAccount(accountId);
     const text =

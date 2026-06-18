@@ -73,7 +73,7 @@ async function runEmojiJob({ force = false } = {}) {
     const page = await loginAutomation.ensureSession(accountId);
     const sendResults = await emojiSender.sendEmojisToChats(page, enabledChats);
     await page.close();
-    await browserManager.closeBrowser();
+    await browserManager.closeBrowser({ saveSession: true, accountId });
 
     for (const result of sendResults) {
       if (result.status === 'success') {
@@ -103,7 +103,7 @@ async function runEmojiJob({ force = false } = {}) {
     return { success: success.length, failed: failed.length, results };
   } catch (err) {
     logger.error('Emoji job failed', err);
-    await browserManager.closeBrowser();
+    await browserManager.closeBrowser({ saveSession: true, accountId });
 
     if (err.message === 'SESSION_EXPIRED') {
       if (config.notifications?.onError) {

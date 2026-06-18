@@ -2,6 +2,7 @@ const { createBot, registerBotCommands } = require('./bot');
 const { initScheduler, stopScheduler, registerSendNow } = require('./scheduler/emojiJob');
 const { initAutoUpdater, stopAutoUpdater } = require('./updater/autoUpdate');
 const { getTelegramBotToken } = require('./config');
+const browserManager = require('./automation/browser');
 const { version } = require('../package.json');
 const logger = require('./logger');
 
@@ -29,6 +30,9 @@ async function main() {
     logger.info(`Shutting down (${signal})...`);
     stopAutoUpdater();
     stopScheduler();
+    await browserManager.closeBrowser({ saveSession: true }).catch((err) => {
+      logger.warn('Failed to save session on shutdown', err);
+    });
     bot.stop(signal);
     process.exit(0);
   };

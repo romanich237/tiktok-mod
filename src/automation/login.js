@@ -308,7 +308,7 @@ async function finalizeLogin(page, accountId, userId) {
   });
   await page.close();
   activePages.delete(userId);
-  await browserManager.closeBrowser();
+  await browserManager.closeBrowser({ saveSession: true, accountId });
   return { success: true, accountId };
 }
 
@@ -320,7 +320,7 @@ async function cancelLogin(userId) {
     await page.close().catch(() => {});
   }
   activePages.delete(userId);
-  await browserManager.closeBrowser();
+  await browserManager.closeBrowser({ saveSession: false });
   cancelledLogins.delete(userId);
 }
 
@@ -337,7 +337,7 @@ async function cancelAllLogins() {
     activePages.delete(userId);
     cancelledLogins.delete(userId);
   }
-  await browserManager.closeBrowser().catch(() => {});
+  await browserManager.closeBrowser({ saveSession: false }).catch(() => {});
 }
 
 async function startEmailLogin(userId) {
@@ -405,7 +405,7 @@ async function completeQrLogin(userId, onQrImage) {
       });
       await page.close();
       activePages.delete(userId);
-      await browserManager.closeBrowser();
+      await browserManager.closeBrowser({ saveSession: true, accountId });
       return { success: true, accountId, photoCount };
     }
 
@@ -419,7 +419,7 @@ async function completeQrLogin(userId, onQrImage) {
         });
         await page.close();
         activePages.delete(userId);
-        await browserManager.closeBrowser();
+        await browserManager.closeBrowser({ saveSession: true, accountId });
         return { success: true, accountId, photoCount };
       }
     }
@@ -481,6 +481,10 @@ async function ensureSession(accountId) {
       logger.warn('Profile sync in ensureSession failed', err);
     });
   }
+
+  await browserManager.saveStorageState(accountIdResolved).catch((err) => {
+    logger.warn('Session snapshot in ensureSession failed', err);
+  });
 
   return page;
 }
