@@ -1,5 +1,16 @@
 const { Markup } = require('telegraf');
 
+function loginMethodsKeyboard() {
+  return Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📷 QR-код', 'login_method:qr'),
+      Markup.button.callback('📱 Телефон', 'login_method:phone'),
+    ],
+    [Markup.button.callback('✉️ Email', 'login_method:email')],
+    [Markup.button.callback('❌ Отмена', 'login_cancel')],
+  ]);
+}
+
 function mainMenuKeyboard() {
   return Markup.keyboard([
     ['🔐 Войти', '💬 Чаты'],
@@ -49,6 +60,7 @@ function streaksKeyboard() {
 }
 
 module.exports = {
+  loginMethodsKeyboard,
   mainMenuKeyboard,
   chatsKeyboard,
   settingsKeyboard,

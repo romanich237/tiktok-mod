@@ -1,13 +1,15 @@
-const { Markup } = require('telegraf');
 const { mainMenuKeyboard } = require('../keyboards/inline');
-const { isAccountAuthorized, authKeyboard } = require('../auth');
+const { isAccountAuthorized } = require('../auth');
+const { promptLoginMethods, armLoginChoice } = require('./login');
 
 function registerStart(bot) {
   bot.command('start', async (ctx) => {
     if (!isAccountAuthorized()) {
+      const userId = ctx.from?.id;
+      if (userId) armLoginChoice(userId);
       await ctx.reply(
-        '👋 TikTok Mod\n\nДля начала работы войдите в TikTok.\nПока вход не выполнен — остальные функции недоступны.',
-        authKeyboard()
+        '👋 TikTok Mod\n\nДля начала работы войдите в TikTok.\nПока вход не выполнен — остальные функции недоступны.\n\nВыберите способ входа:',
+        require('../keyboards/inline').loginMethodsKeyboard()
       );
       return;
     }

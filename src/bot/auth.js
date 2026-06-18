@@ -1,10 +1,10 @@
-const { Markup } = require('telegraf');
 const { config } = require('../config');
 const accountsRepo = require('../db/repositories/accounts');
 const browserManager = require('../automation/browser');
+const { loginMethodsKeyboard } = require('./keyboards/inline');
 
 function authKeyboard() {
-  return Markup.inlineKeyboard([[Markup.button.callback('🔐 Авторизация', 'start_auth')]]);
+  return loginMethodsKeyboard();
 }
 
 function isAccountAuthorized() {

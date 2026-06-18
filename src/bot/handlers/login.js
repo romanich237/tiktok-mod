@@ -1,52 +1,61 @@
-const { Markup } = require('telegraf');
 const loginAutomation = require('../../automation/login');
 const { formatBrowserError } = require('../../automation/pageUtils');
 const loginSession = require('../loginSession');
-const { mainMenuKeyboard } = require('../keyboards/inline');
-const { isAccountAuthorized, authKeyboard } = require('../auth');
-const logger = require('../../logger');
+const { mainMenuKeyboard, loginMethodsKeyboard } = require('../keyboards/inline');
+const { isAccountAuthorized } = require('../auth');
+const logger = require('../logger');
 
 let loginInProgress = false;
 
-const methodKeyboard = Markup.inlineKeyboard([
-  [
-    Markup.button.callback('📷 QR-код', 'login_method:qr'),
-    Markup.button.callback('📱 Телефон', 'login_method:phone'),
-  ],
-  [Markup.button.callback('✉️ Email', 'login_method:email')],
-  [Markup.button.callback('❌ Отмена', 'login_cancel')],
-]);
+const LOGIN_METHODS_TEXT =
+  '🔐 Вход в TikTok\n\nВыберите способ входа.\nВсе данные вводятся здесь, в боте.';
+
+function armLoginChoice(userId) {
+  loginSession.set(userId, { step: 'choose_method', armedAt: Date.now() });
+}
+
+async function promptLoginMethods(ctx) {
+  const userId = ctx.from?.id;
+  if (!userId) return;
+
+  await resetLoginState(userId);
+  armLoginChoice(userId);
+  await ctx.reply(LOGIN_METHODS_TEXT, loginMethodsKeyboard());
+}
 
 function registerLogin(bot) {
   loginInProgress = false;
   loginAutomation.cancelAllLogins().catch(() => {});
 
-  bot.command('login', showLoginMethods);
+  bot.command('login', promptLoginMethods);
   bot.command('login_cancel', cancelLogin);
-  bot.hears('🔐 Войти', showLoginMethods);
+  bot.hears('🔐 Войти', promptLoginMethods);
 
   bot.action('start_auth', async (ctx) => {
     await ctx.answerCbQuery().catch(() => {});
-    await showLoginMethods(ctx);
+    await promptLoginMethods(ctx);
   });
 
   bot.action('login_method:qr', async (ctx) => {
     await ctx.answerCbQuery().catch(() => {});
-    await beginQrLogin(ctx);
+    if (!ensureLoginChoice(ctx)) return;
+    void runQrLoginFlow(ctx);
   });
 
   bot.action('login_method:phone', async (ctx) => {
     await ctx.answerCbQuery().catch(() => {});
+    if (!ensureLoginChoice(ctx)) return;
     await beginPhoneLogin(ctx);
   });
 
   bot.action('login_method:email', async (ctx) => {
     await ctx.answerCbQuery().catch(() => {});
+    if (!ensureLoginChoice(ctx)) return;
     await beginEmailLogin(ctx);
   });
 
   bot.action('login_cancel', async (ctx) => {
-    await ctx.answerCbQuery('Отменено');
+    await ctx.answerCbQuery('Отменено').catch(() => {});
     await cancelLogin(ctx);
   });
 
@@ -81,6 +90,18 @@ function registerLogin(bot) {
     }
   });
 
+  function ensureLoginChoice(ctx) {
+    const userId = ctx.from?.id;
+    if (!userId) return false;
+
+    if (loginSession.get(userId)?.step === 'choose_method') {
+      return true;
+    }
+
+    void promptLoginMethods(ctx);
+    return false;
+  }
+
   async function resetLoginState(userId) {
     if (loginInProgress) {
       await loginAutomation.cancelLogin(userId).catch(() => {});
@@ -89,41 +110,9 @@ function registerLogin(bot) {
     loginSession.clear(userId);
   }
 
-  async function showLoginMethods(ctx) {
+  async function runQrLoginFlow(ctx) {
     const userId = ctx.from?.id;
     if (!userId) return;
-
-    await resetLoginState(userId);
-    loginSession.set(userId, { step: 'choose_method' });
-
-    const text =
-      '🔐 Вход в TikTok\n\nВыберите способ входа.\nВсе данные вводятся здесь, в боте.';
-
-    if (ctx.callbackQuery?.message) {
-      try {
-        await ctx.editMessageText(text, methodKeyboard);
-        return;
-      } catch {
-        // message too old or unchanged — send a new one
-      }
-    }
-
-    await ctx.reply(text, methodKeyboard);
-  }
-
-  async function requireMethodChoice(ctx) {
-    const userId = ctx.from?.id;
-    if (!userId) return false;
-    const session = loginSession.get(userId);
-    if (session?.step === 'choose_method') return true;
-    await showLoginMethods(ctx);
-    return false;
-  }
-
-  async function beginQrLogin(ctx) {
-    const userId = ctx.from?.id;
-    if (!userId) return;
-    if (!(await requireMethodChoice(ctx))) return;
 
     if (loginInProgress) {
       await ctx.reply('⏳ Вход уже выполняется. /login_cancel — отменить');
@@ -131,8 +120,9 @@ function registerLogin(bot) {
     }
 
     loginInProgress = true;
+    loginSession.update(userId, { step: 'qr_waiting', method: 'qr' });
+
     try {
-      loginSession.update(userId, { step: 'qr_waiting', method: 'qr' });
       await ctx.reply('📷 Открываю страницу QR-кода...');
       await loginAutomation.startQrLogin(userId);
 
@@ -157,9 +147,10 @@ function registerLogin(bot) {
       await cleanupLogin(userId);
       const message = formatBrowserError(err);
       if (!isAccountAuthorized()) {
-        await ctx.reply(`❌ ${message}`, authKeyboard());
+        armLoginChoice(userId);
+        await ctx.reply(`❌ ${message}`, loginMethodsKeyboard());
       } else {
-        await ctx.reply(`❌ ${message}`, methodKeyboard);
+        await ctx.reply(`❌ ${message}`, mainMenuKeyboard());
       }
     }
   }
@@ -167,7 +158,6 @@ function registerLogin(bot) {
   async function beginPhoneLogin(ctx) {
     const userId = ctx.from?.id;
     if (!userId) return;
-    if (!(await requireMethodChoice(ctx))) return;
 
     if (loginInProgress) {
       await ctx.reply('⏳ Вход уже выполняется. /login_cancel — отменить');
@@ -182,7 +172,6 @@ function registerLogin(bot) {
   async function beginEmailLogin(ctx) {
     const userId = ctx.from?.id;
     if (!userId) return;
-    if (!(await requireMethodChoice(ctx))) return;
 
     if (loginInProgress) {
       await ctx.reply('⏳ Вход уже выполняется. /login_cancel — отменить');
@@ -245,7 +234,8 @@ function registerLogin(bot) {
     const userId = ctx.from?.id;
     if (userId) await cleanupLogin(userId);
     if (!isAccountAuthorized()) {
-      await ctx.reply('Вход отменён.', authKeyboard());
+      armLoginChoice(userId);
+      await ctx.reply('Вход отменён.', loginMethodsKeyboard());
     } else {
       await ctx.reply('Вход отменён.', mainMenuKeyboard());
     }
@@ -258,4 +248,4 @@ function registerLogin(bot) {
   }
 }
 
-module.exports = { registerLogin };
+module.exports = { registerLogin, promptLoginMethods, armLoginChoice };

@@ -20,7 +20,7 @@ function createBot() {
     throw new Error('telegram.botToken is not set in config.json');
   }
 
-  const bot = new Telegraf(token);
+  const bot = new Telegraf(token, { handlerTimeout: 600_000 });
   bot.use(authMiddleware());
   bot.use(loginRequiredMiddleware());
 
