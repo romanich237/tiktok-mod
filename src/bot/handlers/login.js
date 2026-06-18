@@ -18,13 +18,13 @@ const methodKeyboard = Markup.inlineKeyboard([
 ]);
 
 function registerLogin(bot) {
-  bot.command('login', startLogin);
+  bot.command('login', showLoginMethods);
   bot.command('login_cancel', cancelLogin);
-  bot.hears('🔐 Войти', startLogin);
+  bot.hears('🔐 Войти', showLoginMethods);
 
   bot.action('start_auth', async (ctx) => {
     await ctx.answerCbQuery();
-    await startLogin(ctx);
+    await showLoginMethods(ctx);
   });
 
   bot.action('login_method:qr', async (ctx) => {
@@ -78,18 +78,12 @@ function registerLogin(bot) {
     }
   });
 
-  async function startLogin(ctx) {
-    if (isAccountAuthorized()) {
-      await ctx.reply('✅ TikTok уже авторизован.', mainMenuKeyboard());
-      return;
-    }
-
+  async function showLoginMethods(ctx) {
     if (loginInProgress) {
       await ctx.reply('⏳ Вход уже выполняется. /login_cancel — отменить');
       return;
     }
 
-    loginInProgress = true;
     loginSession.set(ctx.from.id, { step: 'choose_method' });
 
     await ctx.reply(
@@ -104,23 +98,12 @@ function registerLogin(bot) {
       return;
     }
 
-    if (isAccountAuthorized()) {
-      await ctx.reply('✅ TikTok уже авторизован.', mainMenuKeyboard());
-      return;
-    }
-
     loginInProgress = true;
     const userId = ctx.from.id;
     try {
       loginSession.update(userId, { step: 'qr_waiting', method: 'qr' });
       await ctx.reply('📷 Открываю страницу QR-кода...');
-      const started = await loginAutomation.startQrLogin(userId);
-
-      if (started.alreadyLoggedIn) {
-        await cleanupLogin(userId);
-        await ctx.reply('✅ Сессия уже активна! Вход не требуется.', mainMenuKeyboard());
-        return;
-      }
+      await loginAutomation.startQrLogin(userId);
 
       await loginAutomation.completeQrLogin(userId, async (buffer, number) => {
         await ctx.replyWithPhoto(
@@ -145,21 +128,33 @@ function registerLogin(bot) {
       if (!isAccountAuthorized()) {
         await ctx.reply(`❌ ${message}`, authKeyboard());
       } else {
-        await ctx.reply(`❌ ${message}`);
+        await ctx.reply(`❌ ${message}`, methodKeyboard);
       }
     }
   }
 
   async function beginPhoneLogin(ctx) {
+    if (loginInProgress) {
+      await ctx.reply('⏳ Вход уже выполняется. /login_cancel — отменить');
+      return;
+    }
+
+    loginInProgress = true;
     const userId = ctx.from.id;
-    await ctx.reply('📱 Введите номер телефона (например: +79001234567):');
     loginSession.update(userId, { step: 'phone_number', method: 'phone' });
+    await ctx.reply('📱 Введите номер телефона (например: +79001234567):');
   }
 
   async function beginEmailLogin(ctx) {
+    if (loginInProgress) {
+      await ctx.reply('⏳ Вход уже выполняется. /login_cancel — отменить');
+      return;
+    }
+
+    loginInProgress = true;
     const userId = ctx.from.id;
-    await ctx.reply('✉️ Введите email или username:');
     loginSession.update(userId, { step: 'email_username', method: 'email' });
+    await ctx.reply('✉️ Введите email или username:');
   }
 
   async function handlePhoneNumber(ctx, phone) {
@@ -215,7 +210,7 @@ function registerLogin(bot) {
     if (!isAccountAuthorized()) {
       await ctx.reply('Вход отменён.', authKeyboard());
     } else {
-      await ctx.reply('Вход отменён.');
+      await ctx.reply('Вход отменён.', mainMenuKeyboard());
     }
   }
 

@@ -444,17 +444,8 @@ async function loginPhoneSendCode(userId, phone) {
 async function startQrLogin(userId) {
   const { page, accountId } = await prepareBrowser();
   activePages.set(userId, page);
-
-  await page.goto(config.tiktok.messagesUrl, { waitUntil: 'domcontentloaded' });
-  await pause(page, 2500, userId);
-  if (await isLoggedIn(page)) {
-    await browserManager.saveStorageState(accountId);
-    await accountsRepo.setLoggedIn(accountId, true);
-    return { page, accountId, alreadyLoggedIn: true };
-  }
-
   await openQrLoginForm(page);
-  return { page, accountId, alreadyLoggedIn: false };
+  return { page, accountId };
 }
 
 async function completeQrLogin(userId, onQrImage) {
