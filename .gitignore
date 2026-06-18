@@ -1,10 +1,11 @@
 node_modules/
-sql
 config.json
 sessions/*
 !sessions/.gitkeep
 logs/*
 !logs/.gitkeep
+mysql-data/
+deploy/mysql-local.cnf
 .env
 *.log
 .DS_Store

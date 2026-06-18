@@ -13,7 +13,8 @@ const EXAMPLE_PATH = path.join(ROOT, 'config.json.example');
 const MYSQL_WAIT_SEC = 90;
 const MYSQL_PORT_MIN = 2000;
 const MYSQL_PORT_MAX = 3000;
-const MYSQL_CONF_DROPIN = '/etc/mysql/mysql.conf.d/zz-tiktok-mod.cnf';
+const MYSQL_DATA_DIR = path.join(ROOT, 'mysql-data');
+const MYSQL_CONF_PATH = path.join(ROOT, 'deploy', 'mysql-local.cnf');
 
 const colors = {
   reset: '\x1b[0m',
@@ -213,7 +214,7 @@ function updateTelegramConfig(config, botToken, userId) {
 }
 
 function ensureDirs() {
-  for (const dir of ['sessions', 'logs']) {
+  for (const dir of ['sessions', 'logs', 'mysql-data', 'deploy']) {
     fs.mkdirSync(path.join(ROOT, dir), { recursive: true });
   }
 }
@@ -314,60 +315,88 @@ function installSystemDependencies() {
     run(
       'sudo apt-get install -y mysql-server xvfb libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1 libasound2'
     );
-    runOptional('sudo systemctl enable mysql');
-    if (!runOptional('sudo systemctl start mysql')) {
-      warn('MySQL не запустился сразу — порт будет настроен на следующем шаге');
-    } else {
-      ok('MySQL service запущен');
-    }
-    ok('Системные пакеты установлены');
+    runOptional('sudo systemctl stop mysql');
+    runOptional('sudo systemctl disable mysql');
+    ok('Пакеты установлены (локальный MySQL в папке проекта)');
     return;
   }
 
   warn('apt не найден — установите пакеты вручную (см. README)');
 }
 
-function configureMysqlPort(port) {
-  const content = `[mysqld]\nport = ${port}\nbind-address = 127.0.0.1\n`;
-  const tmp = '/tmp/tiktok-mod-mysql.cnf';
-  fs.writeFileSync(tmp, content);
-  run(`sudo cp ${tmp} ${MYSQL_CONF_DROPIN}`);
-  ok(`Конфиг MySQL: порт ${port}`);
+function writeMysqlLocalConfig(port) {
+  const rootPath = ROOT.replace(/\\/g, '/');
+  const dataDir = `${rootPath}/mysql-data`;
+  const socket = `${dataDir}/mysql.sock`;
+  const content = `[mysqld]
+port = ${port}
+bind-address = 127.0.0.1
+datadir = ${dataDir}
+socket = ${socket}
+pid-file = ${dataDir}/mysql.pid
+skip-name-resolve
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+[client]
+port = ${port}
+socket = ${socket}
+`;
+
+  fs.mkdirSync(path.dirname(MYSQL_CONF_PATH), { recursive: true });
+  fs.writeFileSync(MYSQL_CONF_PATH, content);
+  ok(`Конфиг MySQL: deploy/mysql-local.cnf (порт ${port})`);
 }
 
-function tryRepairMysql() {
-  runOptional('sudo mkdir -p /var/run/mysqld');
-  runOptional('sudo chown mysql:mysql /var/run/mysqld');
-  runOptional('sudo rm -f /var/lib/mysql/mysql.sock.lock');
+function initMysqlDataDir() {
+  fs.mkdirSync(MYSQL_DATA_DIR, { recursive: true });
+  run('sudo chown -R mysql:mysql mysql-data');
+
+  if (!fs.existsSync(path.join(MYSQL_DATA_DIR, 'ibdata1'))) {
+    log('Инициализация локальной MySQL в mysql-data/...');
+    run(
+      `sudo mysqld --initialize-insecure --datadir="${MYSQL_DATA_DIR.replace(/\\/g, '/')}" --user=mysql`
+    );
+    ok('Данные MySQL созданы');
+  }
 }
 
-function startMysqlService() {
-  tryRepairMysql();
-  if (runOptional('sudo systemctl restart mysql')) return true;
-  return runOptional('sudo systemctl start mysql');
+function startLocalMysqlForInstall() {
+  run('chmod +x scripts/mysql-local.sh');
+
+  if (spawnSync('pgrep', ['-f', 'mysql-local.cnf'], { stdio: 'ignore', shell: '/bin/bash' }).status === 0) {
+    ok('Локальный MySQL уже запущен');
+    return;
+  }
+
+  log('Запуск локального MySQL...');
+  run('nohup bash scripts/mysql-local.sh >> logs/mysql-local.log 2>&1 &');
 }
 
-async function ensureMysqlPort(config) {
+async function ensureLocalMysqlInstance(config) {
   config.mysql = config.mysql || {};
-  const mysqlConfig = getMysqlSettings(config);
   const configuredPort = Number(config.mysql.port);
+  const mysqlConfig = getMysqlSettings(config);
 
   if (configuredPort > 0 && isPortInRange(configuredPort) && (await canConnectAsAppUser(mysqlConfig))) {
-    ok(`MySQL уже работает на порту ${configuredPort}`);
+    ok(`Локальный MySQL уже работает на порту ${configuredPort}`);
     return configuredPort;
   }
 
-  log(`Поиск свободного порта MySQL (${MYSQL_PORT_MIN}-${MYSQL_PORT_MAX})...`);
-  const port = await findFreePort();
-  config.mysql.port = port;
-  saveConfigFile(config);
-  ok(`Выбран порт MySQL: ${port}`);
-
-  configureMysqlPort(port);
-
-  if (!startMysqlService()) {
-    warn('systemctl не смог запустить MySQL');
+  let port = configuredPort;
+  if (!(port > 0 && isPortInRange(port))) {
+    log(`Поиск свободного порта MySQL (${MYSQL_PORT_MIN}-${MYSQL_PORT_MAX})...`);
+    port = await findFreePort();
   }
+
+  config.mysql.port = port;
+  config.mysql.host = '127.0.0.1';
+  saveConfigFile(config);
+  ok(`Порт MySQL: ${port}`);
+
+  writeMysqlLocalConfig(port);
+  initMysqlDataDir();
+  startLocalMysqlForInstall();
 
   return port;
 }
@@ -383,10 +412,10 @@ async function ensureLocalMysql(config, options) {
   } catch (err) {
     fail(
       `${err.message}\n` +
-        'Проверьте MySQL:\n' +
-        `  sudo journalctl -xeu mysql.service\n` +
-        `  sudo systemctl restart mysql\n` +
-        `  cat ${MYSQL_CONF_DROPIN}`
+        'Проверьте локальный MySQL:\n' +
+        '  cat logs/mysql-local.log\n' +
+        '  bash scripts/mysql-local.sh\n' +
+        '  cat deploy/mysql-local.cnf'
     );
   }
 
@@ -396,14 +425,9 @@ async function ensureLocalMysql(config, options) {
   }
 
   log('Создание базы и пользователя...');
-  let rootPassword = '';
-
-  if (!options.nonInteractive) {
-    rootPassword = await ask('Пароль root MySQL (Enter — если пустой): ', { hidden: true });
-  }
 
   try {
-    await setupLocalDatabase(mysqlConfig, rootPassword || '');
+    await setupLocalDatabase(mysqlConfig, '');
     ok(`База "${mysqlConfig.database}" и пользователь "${mysqlConfig.user}" созданы`);
   } catch (err) {
     fail(
@@ -442,7 +466,7 @@ function setupPm2() {
   }).status === 0;
 
   if (hasApp) {
-    run('pm2 restart tiktok-mod');
+    run('pm2 restart ecosystem.config.js');
   } else {
     run('pm2 start ecosystem.config.js');
   }
@@ -465,28 +489,43 @@ function setupPm2() {
     warn('Автозапуск PM2 после перезагрузки не настроен — выполните: pm2 startup');
   }
 
-  ok('Бот запущен через PM2');
+  ok('MySQL и бот запущены через PM2');
   console.log('  pm2 logs tiktok-mod');
+  console.log('  pm2 logs tiktok-mod-mysql');
   console.log('  pm2 status');
 }
 
-function setupSystemd() {
-  const servicePath = '/etc/systemd/system/tiktok-mod.service';
-  const unit = fs.readFileSync(path.join(ROOT, 'deploy', 'tiktok-mod.service'), 'utf8');
+function installSystemdUnit(name, templateFile, replacements = {}) {
+  const servicePath = `/etc/systemd/system/${name}.service`;
+  let content = fs.readFileSync(path.join(ROOT, 'deploy', templateFile), 'utf8');
   const workingDir = ROOT.replace(/\\/g, '/');
-  const nodePath = execSync('command -v node', { encoding: 'utf8', shell: '/bin/bash' }).trim();
-  const content = unit
-    .replace('User=tiktok', `User=${process.env.SUDO_USER || process.env.USER || 'root'}`)
-    .replace('WorkingDirectory=/opt/tiktok-mod', `WorkingDirectory=${workingDir}`)
-    .replace('/usr/bin/node', nodePath);
+  const user = process.env.SUDO_USER || process.env.USER || 'root';
 
-  const tmp = '/tmp/tiktok-mod.service';
+  content = content
+    .replace(/User=\S+/g, `User=${user}`)
+    .replace(/WorkingDirectory=\S+/g, `WorkingDirectory=${workingDir}`);
+
+  if (replacements.nodePath) {
+    content = content.replace('/usr/bin/node', replacements.nodePath);
+  }
+
+  const tmp = `/tmp/${name}.service`;
   fs.writeFileSync(tmp, content);
   run(`sudo cp ${tmp} ${servicePath}`);
+}
+
+function setupSystemd() {
+  const nodePath = execSync('command -v node', { encoding: 'utf8', shell: '/bin/bash' }).trim();
+
+  installSystemdUnit('tiktok-mod-mysql', 'tiktok-mod-mysql.service');
+  installSystemdUnit('tiktok-mod', 'tiktok-mod.service', { nodePath });
+
   run('sudo systemctl daemon-reload');
-  run('sudo systemctl enable tiktok-mod');
+  run('sudo systemctl enable tiktok-mod-mysql tiktok-mod');
+  run('sudo systemctl restart tiktok-mod-mysql');
   run('sudo systemctl start tiktok-mod');
-  ok('Сервис systemd запущен');
+  ok('Сервисы systemd запущены');
+  console.log('  sudo systemctl status tiktok-mod-mysql');
   console.log('  sudo systemctl status tiktok-mod');
   console.log('  sudo journalctl -u tiktok-mod -f');
 }
@@ -497,7 +536,7 @@ async function main() {
 
   console.log('');
   log('=== TikTok Mod — установка (Ubuntu/Debian) ===');
-  log('База данных: локальный MySQL Server');
+  log('База данных: локальный MySQL в папке mysql-data/');
   console.log('');
 
   if (getNodeMajor() < 18) {
@@ -515,7 +554,7 @@ async function main() {
   installPlaywright();
 
   const config = await promptConfig(options);
-  await ensureMysqlPort(config);
+  await ensureLocalMysqlInstance(config);
   await ensureLocalMysql(config, options);
 
   log('Применение миграций таблиц...');

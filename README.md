@@ -10,7 +10,7 @@
 - Автоотправка эмодзи каждые 6–12 часов
 - Уведомления об отправках и ошибках
 
-**База данных:** локальный MySQL Server на том же сервере.
+**База данных:** отдельный MySQL в папке `mysql-data/` (не зависит от системного `mysql.service`).
 
 ---
 
@@ -36,12 +36,12 @@ chmod +x install.sh
 Скрипт автоматически:
 
 1. Проверит Ubuntu/Debian и Node.js
-2. Установит MySQL, xvfb и библиотеки для Chromium (через apt)
+2. Установит пакеты MySQL (только бинарники), xvfb и библиотеки для Chromium
 3. Установит npm-зависимости и Playwright
 4. Создаст `config.json` (спросит токен бота и Telegram ID)
-5. Создаст базу `tiktok_mod` в локальном MySQL (порт 2000–3000 выбирается автоматически)
-6. Применит миграции таблиц
-7. Запустит бота через PM2
+5. Поднимет локальный MySQL в `mysql-data/` (порт 2000–3000 выбирается автоматически)
+6. Создаст базу `tiktok_mod` и применит миграции
+7. Запустит MySQL и бота через PM2
 
 ### Флаги установщика
 
@@ -66,8 +66,8 @@ chmod +x install.sh
 sudo apt update
 sudo apt install -y nodejs npm mysql-server xvfb \
   libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1 libasound2
-sudo systemctl enable mysql
-sudo systemctl start mysql
+sudo systemctl stop mysql
+sudo systemctl disable mysql
 ```
 
 ### 2. Проект
@@ -120,11 +120,12 @@ pm2 save
 
 ## Фоновый запуск
 
-По умолчанию `./install.sh` сам ставит PM2 и запускает бота.
+По умолчанию `./install.sh` сам ставит PM2 и запускает MySQL + бота.
 
 ```bash
 pm2 logs tiktok-mod
-pm2 restart tiktok-mod
+pm2 logs tiktok-mod-mysql
+pm2 restart ecosystem.config.js
 pm2 status
 ```
 
@@ -209,6 +210,9 @@ tiktok-mod/
 ├── config.json.example
 ├── ecosystem.config.js
 ├── deploy/tiktok-mod.service
+├── deploy/tiktok-mod-mysql.service
+├── scripts/mysql-local.sh
+├── mysql-data/
 ├── src/
 ├── sql/
 ├── sessions/
@@ -221,7 +225,7 @@ tiktok-mod/
 
 | Проблема | Решение |
 |----------|---------|
-| MySQL недоступен | `sudo systemctl status mysql` и `sudo journalctl -xeu mysql.service` |
+| MySQL недоступен | `pm2 logs tiktok-mod-mysql`, `cat logs/mysql-local.log` |
 | Браузер не запускается | `sudo npx playwright install-deps chromium` |
 | Нет дисплея для `/login` | PM2 уже использует xvfb-run; иначе скопируйте `sessions/` |
 | `SESSION_EXPIRED` | `/login` заново |

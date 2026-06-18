@@ -41,7 +41,7 @@ async function applyUpdate(branch) {
     execSync('npm run migrate', { cwd: ROOT, stdio: 'inherit' });
 
     logger.info('Restarting application...');
-    execSync('pm2 restart tiktok-mod', { cwd: ROOT, stdio: 'inherit' });
+    execSync('pm2 restart ecosystem.config.js', { cwd: ROOT, stdio: 'inherit' });
   } catch (err) {
     logger.error('Auto-update failed', err);
     await notify(`❌ Ошибка обновления: ${err.message}`);

@@ -1,0 +1,14 @@
+[Unit]
+Description=TikTok Mod Local MySQL
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/tiktok-mod
+ExecStart=/bin/bash scripts/mysql-local.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

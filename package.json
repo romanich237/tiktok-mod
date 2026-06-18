@@ -4,7 +4,7 @@
   "description": "TikTok DM emoji automation with Telegram control (Ubuntu/Debian)",
   "main": "src/index.js",
   "scripts": {
-    "start": "sh -c 'pm2 describe tiktok-mod >/dev/null 2>&1 && pm2 restart tiktok-mod || pm2 start ecosystem.config.js'",
+    "start": "sh -c 'pm2 describe tiktok-mod >/dev/null 2>&1 && pm2 restart ecosystem.config.js || pm2 start ecosystem.config.js'",
     "stop": "pm2 stop tiktok-mod",
     "restart": "pm2 restart tiktok-mod",
     "logs": "pm2 logs tiktok-mod",
